@@ -1,7 +1,7 @@
 /*-
  * See the file LICENSE for redistribution information.
  *
- * Copyright (c) 2005, 2013 Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 2005, 2014 Oracle and/or its affiliates.  All rights reserved.
  *
  * $Id$
  */
@@ -57,6 +57,7 @@ struct sending_msg {
  * whether the PERM message should be considered durable.
  */
 struct repmgr_permanence {
+	u_int32_t gen;		/* Master generation for LSN. */
 	DB_LSN lsn;		/* LSN whose ack this thread is waiting for. */
 	u_int threshold;	/* Number of client acks to wait for. */
 	u_int quorum;		/* Durability threshold for QUORUM policy. */
@@ -504,9 +505,16 @@ __repmgr_send(dbenv, control, rec, lsnp, eid, flags)
 			if (nclients > 1 ||
 			    FLD_ISSET(db_rep->region->config,
 			    REP_C_2SITE_STRICT) ||
-			    db_rep->active_gmdb_update == gmdb_primary)
+			    db_rep->active_gmdb_update == gmdb_primary) {
 				quorum = nclients / 2;
-			else
+				/*
+				 * An unelectable master can't be part of the
+				 * QUORUM policy quorum.
+				 */
+				if (rep->priority == 0 &&
+				    policy == DB_REPMGR_ACKS_QUORUM)
+					quorum++;
+			} else
 				quorum = nclients;
 
 			if (policy == DB_REPMGR_ACKS_ALL_AVAILABLE) {
@@ -566,6 +574,7 @@ __repmgr_send(dbenv, control, rec, lsnp, eid, flags)
 		/* In ALL_PEERS case, display of "needed" might be confusing. */
 		VPRINT(env, (env, DB_VERB_REPMGR_MISC,
 		    "will await acknowledgement: need %u", needed));
+		perm.gen = rep->gen;
 		perm.lsn = *lsnp;
 		perm.threshold = needed;
 		perm.policy = policy;
@@ -814,7 +823,8 @@ send_connection(env, type, conn, msg, sent)
 		REPMGR_MAX_V2_MSG_TYPE,
 		REPMGR_MAX_V3_MSG_TYPE,
 		REPMGR_MAX_V4_MSG_TYPE,
-		REPMGR_MAX_V5_MSG_TYPE
+		REPMGR_MAX_V5_MSG_TYPE,
+		REPMGR_MAX_V6_MSG_TYPE
 	};
 
 	db_rep = env->rep_handle;
@@ -1148,19 +1158,20 @@ got_acks(env, context)
 		 * Do not count an ack from a view because a view cannot
 		 * contribute to durability.
 		 */
-		if (site->membership != SITE_PRESENT ||
-		    FLD_ISSET(site->gmdb_flags, SITE_VIEW))
+		if (FLD_ISSET(site->gmdb_flags, SITE_VIEW))
 			continue;
 		if (!F_ISSET(site, SITE_HAS_PRIO)) {
 			/*
-			 * Never connected to this site: since we can't know
-			 * whether it's a peer, assume the worst.
+			 * We have not reconnected to this site since the last
+			 * recovery.  Since we don't yet know whether it's a
+			 * peer, assume the worst.
 			 */
 			has_unacked_peer = TRUE;
 			continue;
 		}
 
-		if (LOG_COMPARE(&site->max_ack, &perm->lsn) >= 0) {
+		if (site->max_ack_gen == perm->gen &&
+		    LOG_COMPARE(&site->max_ack, &perm->lsn) >= 0) {
 			sites_acked++;
 			if (F_ISSET(site, SITE_ELECTABLE))
 				peers_acked++;
@@ -1277,7 +1288,9 @@ __repmgr_bust_connection(env, conn)
 	} else			/* Subordinate connection. */
 		goto out;
 
-	if ((ret = __repmgr_schedule_connection_attempt(env, eid, FALSE)) != 0)
+	/* Defer connection attempt if rejoining 2SITE_STRICT=off repgroup. */
+	if (!db_rep->rejoin_pending &&
+	    (ret = __repmgr_schedule_connection_attempt(env, eid, FALSE)) != 0)
 		goto out;
 
 	/*
@@ -1319,6 +1332,13 @@ __repmgr_bust_connection(env, conn)
 			}
 		}
 
+		/* Defer election if rejoining 2SITE_STRICT=off repgroup. */
+		if (db_rep->rejoin_pending) {
+			RPRINT(env, (env, DB_VERB_REPMGR_MISC,
+			    "Deferring election after rejoin rejection"));
+			goto out;
+		}
+
 		/*
 		 * Even if we're not doing elections, defer the event
 		 * notification to later execution in the election
@@ -1331,6 +1351,17 @@ __repmgr_bust_connection(env, conn)
 		else
 			RPRINT(env, (env, DB_VERB_REPMGR_MISC,
 			    "Master failure, but no elections"));
+
+		/*
+		 * In preferred master mode, a client that has lost its
+		 * connection to the master uses an election thread to
+		 * restart as master.
+		 */
+		if (IS_PREFMAS_MODE(env)) {
+			RPRINT(env, (env, DB_VERB_REPMGR_MISC,
+"bust_connection setting preferred master temp master"));
+			db_rep->prefmas_pending = start_temp_master;
+		}
 
 		if ((ret = __repmgr_init_election(env, flags)) != 0)
 			goto out;
@@ -1427,7 +1458,15 @@ __repmgr_disable_connection(env, conn)
 			if (site->state == SITE_CONNECTED && !is_subord &&
 			    (orig_state == CONN_READY ||
 			    orig_state == CONN_CONGESTED)) {
-				rep->sites_avail--;
+				/*
+				 * Some thread orderings can cause a brief
+				 * dip into a negative sites_avail value.
+				 * Once it goes negative it stays negative,
+				 * so avoid this.  Future connections will
+				 * be counted correctly.
+				 */
+				if (rep->sites_avail > 0)
+					rep->sites_avail--;
 				RPRINT(env, (env, DB_VERB_REPMGR_MISC,
 	    "disable_conn: EID %lu disabled.  sites_avail %lu",
 				    (u_long)eid, (u_long)rep->sites_avail));
@@ -1932,6 +1971,7 @@ __repmgr_net_close(env)
 			site->ref.conn.out = NULL;
 		}
 	}
+	rep->sites_avail = 0;
 
 	if (db_rep->listen_fd != INVALID_SOCKET) {
 		if (closesocket(db_rep->listen_fd) == SOCKET_ERROR && ret == 0)

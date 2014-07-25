@@ -1,7 +1,7 @@
 /*-
  * See the file LICENSE for redistribution information.
  *
- * Copyright (c) 1999, 2013 Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 1999, 2014 Oracle and/or its affiliates.  All rights reserved.
  *
  * $Id$
  */
@@ -504,6 +504,7 @@ bdb_EnvOpen(interp, objc, objv, ip, dbenvp)
 		"-mpool_mutex_count",
 		"-mpool_nommap",
 		"-multiversion",
+		"-mutex_failchk_timeout",
 		"-mutex_set_align",
 		"-mutex_set_incr",
 		"-mutex_set_init",
@@ -614,6 +615,7 @@ bdb_EnvOpen(interp, objc, objv, ip, dbenvp)
 		TCL_ENV_MUTEXCOUNT,
 		TCL_ENV_MPOOL_NOMMAP,
 		TCL_ENV_MULTIVERSION,
+		TCL_ENV_MUT_FAILCHK_TIMEOUT,
 		TCL_ENV_MUTSETALIGN,
 		TCL_ENV_MUTSETINCR,
 		TCL_ENV_MUTSETINIT,
@@ -1007,6 +1009,7 @@ bdb_EnvOpen(interp, objc, objv, ip, dbenvp)
 		case TCL_ENV_TXN_TIME:
 		case TCL_ENV_TXN_TIMEOUT:
 		case TCL_ENV_LOCK_TIMEOUT:
+		case TCL_ENV_MUT_FAILCHK_TIMEOUT:
 		case TCL_ENV_REG_TIMEOUT:
 			if (i >= objc) {
 				Tcl_WrongNumArgs(interp, 2, objv,
@@ -1031,6 +1034,10 @@ bdb_EnvOpen(interp, objc, objv, ip, dbenvp)
 				else if ((enum envopen)optindex ==
 				    TCL_ENV_REG_TIMEOUT)
 					time_flag = DB_SET_REG_TIMEOUT;
+				else if ((enum envopen)optindex ==
+				    TCL_ENV_MUT_FAILCHK_TIMEOUT)
+					time_flag = 
+					    DB_SET_MUTEX_FAILCHK_TIMEOUT;
 				else
 					time_flag = DB_SET_TXN_TIMEOUT;
 
@@ -1775,8 +1782,8 @@ bdb_EnvOpen(interp, objc, objv, ip, dbenvp)
 				break;
 			}
 			arg = Tcl_GetStringFromObj(objv[i++], NULL);
-			tcl_EnvSetMsgfile(interp, dbenv, ip, arg);
-			break;			
+			result = tcl_EnvSetMsgfile(interp, dbenv, ip, arg);
+			break;
 		case TCL_ENV_ERRPFX:
 			if (i >= objc) {
 				Tcl_WrongNumArgs(interp, 2, objv,
@@ -2880,18 +2887,22 @@ bdb_DbOpen(interp, objc, objv, ip, dbp)
 			if (errip->i_msg != NULL &&
 			    errip->i_msg != stdout && errip->i_msg != stderr)
 				(void)fclose(errip->i_msg);
-			if (strcmp(arg, "/dev/stdout") == 0)
+			if (strcmp(arg, "NULL") == 0)
+				errip->i_msg = NULL;
+			else if (strcmp(arg, "/dev/stdout") == 0)
 				errip->i_msg = stdout;
 			else if (strcmp(arg, "/dev/stderr") == 0)
 				errip->i_msg = stderr;
 			else
 				errip->i_msg = fopen(arg, "a");
-			if (errip->i_msg != NULL) {
+			if (strcmp(arg, "NULL") == 0 || errip->i_msg != NULL) {
 				_debug_check();
 				(*dbp)->set_msgfile(*dbp, errip->i_msg);
 				set_msg = 1;
 			}
-			break;			
+			else
+				set_msg = 0;
+			break;
 		case TCL_DB_ERRPFX:
 			if (i >= objc) {
 				Tcl_WrongNumArgs(interp, 2, objv,
@@ -4725,6 +4736,9 @@ bdb_GetConfig(interp, objc, objv)
 #ifdef DIAGNOSTIC
 	ADD_CONFIG_NAME("diagnostic");
 #endif
+#ifdef HAVE_FAILCHK_BROADCAST
+	ADD_CONFIG_NAME("failchk_broadcast");
+#endif
 #ifdef HAVE_PARTITION
 	ADD_CONFIG_NAME("partition");
 #endif
@@ -4804,8 +4818,9 @@ bdb_MsgType(interp, objc, objv)
 	 * Add "no_type" for 0 so that we directly index.
 	 */
 	static const char *msgnames[] = {
-		"no_type", "alive", "alive_req", "all_req",
-		"bulk_log", "bulk_page",
+		"no_type", "alive", "alive_req", "all_req", "blob_all_req",
+		"blob_chunk", "blob_chunk_req", "blob_update",
+		"blob_update_req", "bulk_log", "bulk_page",
 		"dupmaster", "file", "file_fail", "file_req", "lease_grant",
 		"log", "log_more", "log_req", "master_req", "newclient",
 		"newfile", "newmaster", "newsite", "page",
@@ -4855,23 +4870,27 @@ bdb_DbUpgrade(interp, objc, objv)
 	Tcl_Obj *CONST objv[];		/* The argument objects */
 {
 	static const char *bdbupg[] = {
-		"-dupsort", "-env", "--", NULL
+		"-dupsort", "-env", "-P", "--", NULL
 	};
 	enum bdbupg {
 		TCL_DBUPG_DUPSORT,
 		TCL_DBUPG_ENV,
+		TCL_DBUPG_PASSWORD,
 		TCL_DBUPG_ENDARG
 	};
 	DB_ENV *dbenv;
 	DB *dbp;
+	ENV *env;
 	u_int32_t flags;
 	int endarg, i, optindex, result, ret;
-	char *arg, *db;
+	char *arg, *db, *dbr, *passwd;
+	size_t nlen;
 
 	dbenv = NULL;
 	dbp = NULL;
+	env = NULL;
 	result = TCL_OK;
-	db = NULL;
+	db = dbr = passwd = NULL;
 	flags = endarg = 0;
 
 	if (objc < 2) {
@@ -4905,6 +4924,16 @@ bdb_DbUpgrade(interp, objc, objv)
 				    TCL_STATIC);
 				return (TCL_ERROR);
 			}
+			env = dbenv->env;
+			break;
+		case TCL_DBUPG_PASSWORD:
+			/* Make sure we have an arg to check against! */
+			if (i >= objc) {
+				Tcl_WrongNumArgs(interp, 2, objv,
+				    "?-P passwd?");
+				return (TCL_ERROR);
+			}
+			passwd = Tcl_GetStringFromObj(objv[i++], NULL);
 			break;
 		case TCL_DBUPG_ENDARG:
 			endarg = 1;
@@ -4950,11 +4979,40 @@ bdb_DbUpgrade(interp, objc, objv)
 		dbp->set_errpfx(dbp, "DbUpgrade");
 		dbp->set_errcall(dbp, _ErrorFunc);
 	}
+	if (passwd != NULL) {
+		if ((ret = dbp->set_encrypt(
+		    dbp, passwd, DB_ENCRYPT_AES)) != 0 ) {
+			result = _ReturnSetup(interp, ret, DB_RETOK_STD(ret),
+			    "set_encrypt");
+			goto error;
+		}
+	}
 	ret = dbp->upgrade(dbp, db, flags);
-	result = _ReturnSetup(interp, ret, DB_RETOK_STD(ret), "db upgrade");
+
+	if (ret == 0 && db != NULL) {
+		nlen = strlen(db);
+		if ((ret = __os_malloc(env, nlen + 2, &dbr)) != 0) {
+			Tcl_SetResult(interp, db_strerror(ret),
+			    TCL_STATIC);
+			return (0);
+		}
+		memcpy(dbr, db, nlen);
+		dbr[nlen] = '1';
+		dbr[nlen+1] = '\0';
+		/* If the associated heap databases exist, upgrade them. */
+		if (__os_exists(env, dbr, NULL) == 0) {
+			if ((ret = dbp->upgrade(dbp, dbr, flags)) != 0)
+				goto end;
+			dbr[nlen] = '2';
+			ret = dbp->upgrade(dbp, dbr, flags);
+		}
+	}
+end:	result = _ReturnSetup(interp, ret, DB_RETOK_STD(ret), "db upgrade");
 error:
 	if (dbp)
 		(void)dbp->close(dbp, 0);
+	if (dbr)
+		__os_free(env, dbr);
 	return (result);
 }
 

@@ -1,7 +1,7 @@
 /*-
  * See the file LICENSE for redistribution information.
  *
- * Copyright (c) 1998, 2013 Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 1998, 2014 Oracle and/or its affiliates.  All rights reserved.
  *
  * $Id$
  */
@@ -134,7 +134,10 @@ typedef enum {
 	REGION_TYPE_LOG,
 	REGION_TYPE_MPOOL,
 	REGION_TYPE_MUTEX,
-	REGION_TYPE_TXN } reg_type_t;
+	REGION_TYPE_TXN,
+	/* This enum always must be the last, and is the largest valid type. */
+	REGION_TYPE_MAX = REGION_TYPE_TXN
+} reg_type_t;
 
 #define	INVALID_REGION_SEGID	-1	/* Segment IDs are either shmget(2) or
 					 * Win16 segment identifiers.  They are
@@ -228,6 +231,8 @@ typedef struct __db_reg_env { /* SHARED */
 	time_t	  op_timestamp;		/* Timestamp for operations. */
 	time_t	  rep_timestamp;	/* Timestamp for rep db handles. */
 	u_int32_t reg_panic;		/* DB_REGISTER triggered panic */
+	u_int32_t failure_panic;	/* Failchk or mutex lock saw a crash. */
+	char	  failure_symptom[DB_FAILURE_SYMPTOM_SIZE];
 	uintmax_t unused;		/* The ALLOC_LAYOUT structure follows
 					 * the REGENV structure in memory and
 					 * contains uintmax_t fields.  Force
@@ -309,11 +314,14 @@ struct __db_reginfo_t {		/* __env_region_attach IN parameters. */
 
 /*
  * PANIC_ISSET, PANIC_CHECK:
- *	Check to see if the DB environment is dead.
+ *	Check to see if the DB environment is dead. If the environment is still
+ *	attached to its regions, look in the REGENV. Otherwise, check whether
+ *	the region had the panic state set when this even detached from it.
  */
 #define	PANIC_ISSET(env)						\
-	((env) != NULL && (env)->reginfo != NULL &&			\
-	    ((REGENV *)(env)->reginfo->primary)->panic != 0 &&		\
+	((env) != NULL && ((env)->reginfo != NULL ?			\
+	    ((REGENV *)(env)->reginfo->primary)->panic != 0 :		\
+	    F_ISSET(env, ENV_REMEMBER_PANIC)) &&			\
 	    !F_ISSET((env)->dbenv, DB_ENV_NOPANIC))
 
 #define	PANIC_CHECK(env)						\

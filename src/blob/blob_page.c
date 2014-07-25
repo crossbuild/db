@@ -1,7 +1,7 @@
 /*-
  * See the file LICENSE for redistribution information.
  *
- * Copyright (c) 2013 Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 2013, 2014 Oracle and/or its affiliates.  All rights reserved.
  */
 
 #include "db_config.h"
@@ -9,9 +9,7 @@
 #include "db_int.h"
 #include "dbinc/db_page.h"
 #include "dbinc/db_am.h"
-#include "dbinc/blob.h"
 #include "dbinc/fop.h"
-#include "dbinc/mp.h"
 
 /*
  * Blob file data item code.
@@ -28,13 +26,13 @@
  *	larger than UINT32MAX then DB_BUFFER_SMALL would have already
  *	been returned.
  * PUBLIC: int __blob_bulk
- * PUBLIC:    __P((DBC *, u_int32_t, uintmax_t, u_int8_t *));
+ * PUBLIC:    __P((DBC *, u_int32_t, db_seq_t, u_int8_t *));
  */
 int
 __blob_bulk(dbc, len, blob_id, dp)
 	DBC *dbc;
 	u_int32_t len;
-	uintmax_t blob_id;
+	db_seq_t blob_id;
 	u_int8_t *dp;
 {
 	DBT dbt;
@@ -50,7 +48,7 @@ __blob_bulk(dbc, len, blob_id, dp)
 	dbt.data = (void *)dp;
 
 	if ((ret = __blob_file_open(
-	    dbc->dbp, &fhp, blob_id, DB_FOP_READONLY)) != 0)
+	    dbc->dbp, &fhp, blob_id, DB_FOP_READONLY, 1)) != 0)
 		goto err;
 
 	if ((ret = __blob_file_read(env, fhp, &dbt, 0, len)) != 0)
@@ -70,13 +68,13 @@ err:	if (fhp != NULL) {
  *	Get a blob file item. Analogous to db_overflow.c:__db_goff.
  *
  * PUBLIC: int __blob_get __P((DBC *,
- * PUBLIC:     DBT *, uintmax_t, off_t, void **, u_int32_t *));
+ * PUBLIC:     DBT *, db_seq_t, off_t, void **, u_int32_t *));
  */
 int
 __blob_get(dbc, dbt, blob_id, file_size, bpp, bpsz)
 	DBC *dbc;
 	DBT *dbt;
-	uintmax_t blob_id;
+	db_seq_t blob_id;
 	off_t file_size;
 	void **bpp;
 	u_int32_t *bpsz;
@@ -110,7 +108,7 @@ __blob_get(dbc, dbt, blob_id, file_size, bpp, bpsz)
 	dbt->size = needed;
 
 	if ((ret = __blob_file_open(
-	    dbc->dbp, &fhp, blob_id, DB_FOP_READONLY)) != 0)
+	    dbc->dbp, &fhp, blob_id, DB_FOP_READONLY, 1)) != 0)
 		goto err;
 
 	if ((ret = __blob_file_read(env, fhp, dbt, dbt->doff, needed)) != 0)
@@ -131,13 +129,13 @@ err:	if (fhp != NULL) {
  *	Put a blob file item.
  *
  * PUBLIC: int __blob_put __P((
- * PUBLIC:    DBC *, DBT *, uintmax_t *, off_t *size, DB_LSN *));
+ * PUBLIC:    DBC *, DBT *, db_seq_t *, off_t *size, DB_LSN *));
  */
 int
 __blob_put(dbc, dbt, blob_id, size, plsn)
 	DBC *dbc;
 	DBT *dbt;
-	uintmax_t *blob_id;
+	db_seq_t *blob_id;
 	off_t *size;
 	DB_LSN *plsn;
 {
@@ -200,14 +198,14 @@ err:	if (fhp != NULL) {
  *	truncate would require a lot of logging, so it is performed by
  *	deleting the old blob file, and creating a new one.
  *
- * PUBLIC: int __blob_repl __P((DBC *, DBT *, uintmax_t, uintmax_t *,off_t *));
+ * PUBLIC: int __blob_repl __P((DBC *, DBT *, db_seq_t, db_seq_t *,off_t *));
  */
 int
 __blob_repl(dbc, nval, blob_id, new_blob_id, size)
 	DBC *dbc;
 	DBT *nval;
-	uintmax_t blob_id;
-	uintmax_t *new_blob_id;
+	db_seq_t blob_id;
+	db_seq_t *new_blob_id;
 	off_t *size;
 {
 	DBT partial;
@@ -239,7 +237,7 @@ __blob_repl(dbc, nval, blob_id, new_blob_id, size)
 		    ((nval->doff == *size) || (nval->dlen == nval->size))) {
 			/* Open the file for appending. */
 			if ((ret = __blob_file_open(
-			    dbc->dbp, &fhp, blob_id, 0)) != 0)
+			    dbc->dbp, &fhp, blob_id, 0, 1)) != 0)
 				goto err;
 			*new_blob_id = blob_id;
 
@@ -268,7 +266,7 @@ __blob_repl(dbc, nval, blob_id, new_blob_id, size)
 		} else {
 			/* Open the old blob file. */
 			if ((ret = __blob_file_open(
-			    dbc->dbp, &fhp, blob_id, DB_FOP_READONLY)) != 0)
+			    dbc->dbp, &fhp, blob_id, DB_FOP_READONLY, 1)) != 0)
 				goto err;
 			/* Create the new blob file. */
 			if ((ret = __blob_file_create(
@@ -361,12 +359,12 @@ err:	if (fhp != NULL) {
  * __blob_del --
  *	Delete a blob file. The onpage record is handled separately..
  *
- * PUBLIC: int __blob_del __P((DBC *, uintmax_t));
+ * PUBLIC: int __blob_del __P((DBC *, db_seq_t));
  */
 int
 __blob_del(dbc, blob_id)
 	DBC *dbc;
-	uintmax_t blob_id;
+	db_seq_t blob_id;
 {
 	int ret;
 

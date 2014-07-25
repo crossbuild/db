@@ -1,6 +1,6 @@
 # See the file LICENSE for redistribution information.
 #
-# Copyright (c) 1999, 2013 Oracle and/or its affiliates.  All rights reserved.
+# Copyright (c) 1999, 2014 Oracle and/or its affiliates.  All rights reserved.
 #
 # $Id$
 
@@ -231,26 +231,36 @@ proc _upgrade_test { temp_dir version method file endianness } {
 
 	puts "Upgrade: $version $method $file $endianness"
 
+	# Set up flags for finding blobs.
+	set dumpflags " -b $testdir/__db_bl" 
+	set bflags " -blob_dir $testdir/__db_bl" 
+
+	# Get the endianness of the machine that created 
+	# the database.
+	set generated_on [string range $version 0 1]
+
 	# Check whether we're working with an encrypted file.
 	if { [string match c-* $file] } {
 		set encrypt 1
+		append dumpflags " -P $passwd "
 	}
-
-	# Open the database prior to upgrading.  If it fails,
-	# it should fail with the DB_OLDVERSION message.
 	set encargs ""
 	set upgradeargs ""
 	if { $encrypt == 1 } {
 		set encargs " -encryptany $passwd "
 		set upgradeargs " -P $passwd "
 	}
+
+	# Open the database prior to upgrading.  If it fails,
+	# it should fail with the DB_OLDVERSION message.
 	if { [catch \
-	    { set db [eval {berkdb open} $encargs \
+	    { set db [eval {berkdb open} $encargs $bflags \
 	    $temp_dir/$file-$endianness.db] } res] } {
 		# Tests that include subdatabases will 
 		# fail here -- make sure they fail with 
 		# the right message.
-		if { [is_substr $file "test116"] == 1 ||
+		if { [is_substr $file "test116"] ||
+		    [is_substr $file "test123"] ||
 		    [is_substr $file "test129"] } {
 			error_check_good subdatabases \
 			    [is_substr $res "multiple databases"] 1	
@@ -262,24 +272,66 @@ proc _upgrade_test { temp_dir version method file endianness } {
 		error_check_good db_close [$db close] 0
 	}
 
-	# Now upgrade the database.
-	set ret [catch {eval exec {$util_path/db_upgrade} $upgradeargs \
-	    "$temp_dir/$file-$endianness.db" } message]
-	error_check_good dbupgrade $ret 0
+	# Upgrade the database.  Skip the upgrade for cross-endian 
+	# files; upgrade does not work across endianness.  
+	# Use the Tcl API upgrade for heap because this will upgrade 
+	# the auxiliary heap files (.db1, .db2) as well as the primary 
+	# file and properly reassociate the files.
+	if { $generated_on == $endianness } {
+		if { $method == "heap" } {
+			set ret [catch {eval berkdb upgrade $upgradeargs \
+			    "$temp_dir/$file-$endianness.db"} message]
+		} else {
+			set ret [catch {eval exec {$util_path/db_upgrade} \
+			    $upgradeargs \
+			    "$temp_dir/$file-$endianness.db"} message]
+		}
+		error_check_good dbupgrade $ret 0
+	}
 
 	error_check_good dbupgrade_verify [verify_dir $temp_dir "" 0 0 1] 0
 
-	upgrade_dump "$temp_dir/$file-$endianness.db" "$temp_dir/temp.dump"
-
-	error_check_good "Upgrade diff.$endianness: $version $method $file" \
-	    [filecmp "$temp_dir/$file.tcldump" "$temp_dir/temp.dump"] 0
+	# Normally we check pre- and post-upgrade databases by opening 
+	# a handle through the Tcl API, writing out the contents, and 
+	# comparing that file to one created the same way on an older version. 
+	# This doesn't work for cross-endian heap because of the way we
+	# implemented heap databases in the Tcl API.
+	# However, since we test cross-endian files only when there is 
+	# no version change, it is safe to use db_dump for this case.
+	#
+	if { $method == "heap" && $generated_on != $endianness } {
+		if { [catch {eval exec $util_path/db_dump $dumpflags \
+		    "$temp_dir/$file-$endianness.db" > $temp_dir/temp.dump}\
+		     res] } {
+			puts "FAIL: $res"
+		}
+		error_check_good \
+		    "Upgrade diff.$endianness: $version $method $file" \
+		    [filecmp "$temp_dir/$file.dump" "$temp_dir/temp.dump"] 0
+	} else {
+		upgrade_tcldump \
+		    "$temp_dir/$file-$endianness.db" "$temp_dir/temp.tcldump"
+		error_check_good \
+		    "Upgrade diff.$endianness: $version $method $file" \
+		    [filecmp "$temp_dir/$file.tcldump" "$temp_dir/temp.tcldump"] 0
+	}
 }
 
 proc _db_load_test { temp_dir version method file } {
 	source include.tcl
 	global errorInfo
 
-	puts "Db_load: $version $method $file"
+	# Because of the auxiliary files this portion of
+	# the test can't work for heap.  The _upgrade_test
+	# is regarded as sufficient.
+	if { $method == "heap" } {
+		puts "Db_load: Skip _db_load_test for heap."
+		return 
+	} else {
+		puts "Db_load: $version $method $file"
+	}
+	set threshold 30
+	set bflags "$temp_dir/__db_bl -o $threshold"
 
 	set ret [catch \
 	    {exec $util_path/db_load -f "$temp_dir/$file.dump" \
@@ -287,9 +339,7 @@ proc _db_load_test { temp_dir version method file } {
 	error_check_good \
 	    "Upgrade load: $version $method $file $message" $ret 0
 
-	if { $method != "heap" } {
-		upgrade_dump "$temp_dir/upgrade.db" "$temp_dir/temp.dump"
-	}
+	upgrade_tcldump "$temp_dir/upgrade.db" "$temp_dir/temp.dump"
 
 	error_check_good "Upgrade diff.1.1: $version $method $file" \
 	    [filecmp "$temp_dir/$file.tcldump" "$temp_dir/temp.dump"] 0
@@ -436,7 +486,7 @@ proc gen_upgrade { dir { save_crypto 1 } { save_non_crypto 1 } } {
 		}
 		set gen_dump 0
 
-#set test_names(test) ""
+#set test_names(test) "test008"
 		set gen_upgrade 1
 		foreach test $test_names(test) {
 			if { [info exists parms($test)] != 1 } {
@@ -619,7 +669,7 @@ proc save_upgrade_files { dir } {
 	if { $gen_upgrade == 1 } {
 		# Save db files from test001 - testxxx.
 		set dbfiles [glob -nocomplain $dir/*.db]
-		set dumpflags ""
+		set dumpflags " -b $dir/__db_bl"
 		# Don't include keys in the dump for heap because
 		# it will interfere with the load.
 		if { $upgrade_method != "heap" } {
@@ -636,8 +686,10 @@ proc save_upgrade_files { dir } {
 		}
 		foreach dbfile $dbfiles {
 			# For heap, make sure to copy the 
-			# supplemental tcl files. 
+			# supplemental tcl files.
 			if { $upgrade_method == "heap" } {
+				set dbfile1 ""
+				set dbfile2 ""
 				append dbfile1 $dbfile "1"
 				append dbfile2 $dbfile "2"
 			}
@@ -653,13 +705,22 @@ proc save_upgrade_files { dir } {
 			}
 
 			# tcl_dump file
-			upgrade_dump $dbfile $dir/$newbasename.tcldump
+			upgrade_tcldump $dbfile $dir/$newbasename.tcldump
 
-			# Rename dbfile and any dbq files.
+			# Rename dbfile and any dbq files.  In some heap 
+			# runs there are supporting non-heap databases
+			# (e.g. secondaries).  So if we don't find the 
+			# expected supporting files we assume it's okay
+			# and silently skip the dbfile1/dbfile2 rename.
+			#
 			file rename $dbfile $dir/$newbasename-$en.db
 			if { $upgrade_method == "heap"} {
-				file rename $dbfile1 $dir/$newbasename-$en.db1
-				file rename $dbfile2 $dir/$newbasename-$en.db2
+				if { [file exists $dbfile1] } {
+					file rename $dbfile1\
+					    $dir/$newbasename-$en.db1
+					file rename $dbfile2\
+					    $dir/$newbasename-$en.db2
+				}
 			}
 			foreach dbq \
 			    [glob -nocomplain $dir/__dbq.$basename.db.*] {
@@ -671,8 +732,15 @@ proc save_upgrade_files { dir } {
 			}
 			set cwd [pwd]
 			cd $dir
-			catch {eval exec tar -cvf $dest/$newbasename.tar \
-			    [glob $newbasename* __dbq.$newbasename-$en.db.*]}
+			
+			# Build a list of files to put in the tarball. 
+			# Save the default blob directory if it's there.
+			set archive_list [glob -nocomplain __db_bl \
+			    $newbasename* __dbq.$newbasename-$en.db.*]
+
+			# Now tar it up. 
+			catch {eval {exec tar -cvf\
+			    $dest/$newbasename.tar} $archive_list }
 			catch {exec gzip -9v $dest/$newbasename.tar} res
 			cd $cwd
 		}
@@ -747,16 +815,18 @@ proc save_upgrade_files { dir } {
 	}
 }
 
-proc upgrade_dump { database file {stripnulls 0} } {
+proc upgrade_tcldump { database file {stripnulls 0} } {
 	global errorInfo
 	global encrypt
 	global passwd
+	source ./include.tcl
 
 	set encargs ""
 	if { $encrypt == 1 } {
 		set encargs " -encryptany $passwd "
 	}
-	set db [eval {berkdb open} -rdonly $encargs $database]
+	set bflags " -blob_dir $testdir/__db_bl"
+	set db [eval {berkdb open} -rdonly $encargs $bflags $database]
 	set dbc [$db cursor]
 
 	set f [open $file w+]
@@ -829,8 +899,8 @@ proc upgrade_dump { database file {stripnulls 0} } {
 	}
 
 	close $f
-	error_check_good upgrade_dump_c_close [$dbc close] 0
-	error_check_good upgrade_dump_db_close [$db close] 0
+	error_check_good upgrade_tcldump_c_close [$dbc close] 0
+	error_check_good upgrade_tcldump_db_close [$db close] 0
 }
 
 proc _comp { a b } {

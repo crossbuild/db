@@ -1,7 +1,7 @@
 /*-
  * See the file LICENSE for redistribution information.
  *
- * Copyright (c) 2006, 2013 Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 2006, 2014 Oracle and/or its affiliates.  All rights reserved.
  *
  * $Id$
  */
@@ -291,7 +291,17 @@ __repmgr_next_timeout(env, deadline, action)
 
 	if (rep->master_id == db_rep->self_eid &&
 	    rep->heartbeat_frequency > 0) {
-		t = db_rep->last_bcast;
+		/*
+		 * A temporary master in preferred master mode must send
+		 * regular heartbeats regardless of other activity because
+		 * the preferred master requires a heartbeat to take over as
+		 * master after it has synced with the temporary master.
+		 */
+		if (IS_PREFMAS_MODE(env) &&
+		    FLD_ISSET(rep->config, REP_C_PREFMAS_CLIENT))
+			t = db_rep->last_hbeat;
+		else
+			t = db_rep->last_bcast;
 		TIMESPEC_ADD_DB_TIMEOUT(&t, rep->heartbeat_frequency);
 		my_action = __repmgr_send_heartbeat;
 	} else if ((master = __repmgr_connected_master(env)) != NULL &&
@@ -350,6 +360,24 @@ __repmgr_send_heartbeat(env)
 
 	db_rep = env->rep_handle;
 	rep = db_rep->region;
+	ret = 0;
+
+	/*
+	 * Check test hook preventing heartbeats and connection attempts.
+	 * This is used to create and maintain a dupmaster condition in
+	 * a test until the test hook is rescinded.
+	 */
+	DB_TEST_SET(env->test_abort, DB_TEST_REPMGR_HEARTBEAT);
+
+	/*
+	 * Track last heartbeat for temporary master in preferred master
+	 * mode so that it will send regular heartbeats regardless of
+	 * other activity.
+	 */
+	if (IS_PREFMAS_MODE(env) &&
+	    FLD_ISSET(rep->config, REP_C_PREFMAS_CLIENT) &&
+	    rep->master_id == db_rep->self_eid)
+		__os_gettime(env, &db_rep->last_hbeat, 1);
 
 	permlsn.generation = rep->gen;
 	if ((ret = __rep_get_maxpermlsn(env, &permlsn.lsn)) != 0)
@@ -359,8 +387,11 @@ __repmgr_send_heartbeat(env)
 	control.size = __REPMGR_PERMLSN_SIZE;
 
 	DB_INIT_DBT(rec, NULL, 0);
-	return (__repmgr_send_broadcast(env,
-	    REPMGR_HEARTBEAT, &control, &rec, &unused1, &unused2, &unused3));
+	ret =__repmgr_send_broadcast(env,
+	    REPMGR_HEARTBEAT, &control, &rec, &unused1, &unused2, &unused3);
+
+DB_TEST_RECOVERY_LABEL
+	return (ret);
 }
 
 /*
@@ -422,6 +453,8 @@ __repmgr_check_timeouts(env)
 	HEARTBEAT_ACTION action;
 	int ret;
 
+	ret = 0;
+
 	/*
 	 * Figure out the next heartbeat-related thing to be done.  Then, if
 	 * it's time to do it, do so.
@@ -441,7 +474,17 @@ __repmgr_check_timeouts(env)
 	if ((ret = __repmgr_check_master_listener(env)) != 0)
 		return (ret);
 
-	return (__repmgr_retry_connections(env));
+	/*
+	 * Check test hook preventing heartbeats and connection attempts.
+	 * This is used to create and maintain a dupmaster condition in
+	 * a test until the test hook is rescinded.
+	 */
+	DB_TEST_SET(env->test_abort, DB_TEST_REPMGR_HEARTBEAT);
+
+	ret = __repmgr_retry_connections(env);
+
+DB_TEST_RECOVERY_LABEL
+	return (ret);
 }
 
 /*
@@ -552,7 +595,7 @@ __repmgr_takeover_thread(argsp)
 	ENV *env;
 	REP *rep;
 	REPMGR_RUNNABLE *th;
-	int nthreads, ret;
+	int nthreads, ret, save_policy;
 
 	th = argsp;
 	env = th->env;
@@ -580,6 +623,15 @@ __repmgr_takeover_thread(argsp)
 	nthreads = db_rep->config_nthreads == 0 ? (int)rep->listener_nthreads :
 	    db_rep->config_nthreads;
 	/*
+	 * It is possible that this subordinate process does not have intact
+	 * connections to the other sites.  For most ack policies, restarting
+	 * repmgr will wait for acks when it commits its transaction to reload
+	 * the gmdb.  Temporarily set the ack policy to NONE for the takeover
+	 * so that it is not delayed waiting for acks that can never come.
+	 */
+	save_policy = rep->perm_policy;
+	rep->perm_policy = DB_REPMGR_ACKS_NONE;
+	/*
 	 * Restart the repmgr as listener.  If DB_REP_IGNORE is returned,
 	 * the current process has become listener.  If DB_REP_UNAVAIL is
 	 * returned, the site has been removed from the group and no listener
@@ -602,6 +654,7 @@ __repmgr_takeover_thread(argsp)
 		/* The current process is not changed to listener. */
 		RPRINT(env, (env, DB_VERB_REPMGR_MISC, "failed to take over"));
 	}
+	rep->perm_policy = save_policy;
 	RPRINT(env, (env, DB_VERB_REPMGR_MISC, "takeover thread is exiting"));
 	ENV_LEAVE(env, ip);
 out:	th->finished = TRUE;
@@ -672,6 +725,17 @@ __repmgr_check_master_listener(env)
 				RPRINT(env, (env, DB_VERB_REPMGR_MISC,
 				    "Master failure, but no elections"));
 
+			/*
+			 * In preferred master mode, a client that has lost its
+			 * connection to the master uses an election thread to
+			 * restart as master.
+			 */
+			if (IS_PREFMAS_MODE(env)) {
+				RPRINT(env, (env, DB_VERB_REPMGR_MISC,
+"check_master_listener setting preferred master temp master"));
+				db_rep->prefmas_pending = start_temp_master;
+			}
+
 			ret = __repmgr_init_election(env, flags);
 		}
 		/*
@@ -727,7 +791,7 @@ __repmgr_refresh_selector(env)
 				__os_free(env, retry);
 				site->ref.retry = NULL;
 			}
-		
+
 		}
 		/*
 		 * Try to connect to any site that is now PRESENT after
@@ -799,6 +863,13 @@ __repmgr_first_try_connections(env)
 	db_rep = env->rep_handle;
 	rep = db_rep->region;
 
+	/*
+	 * Check test hook preventing heartbeats and connection attempts.
+	 * This is used to create and maintain a dupmaster condition in
+	 * a test until the test hook is rescinded.
+	 */
+	DB_TEST_SET(env->test_abort, DB_TEST_REPMGR_HEARTBEAT);
+
 	FOR_EACH_REMOTE_SITE_INDEX(eid) {
 		SET_LISTENER_CAND(1, = 0);
 		site = SITE_FROM_EID(eid);
@@ -815,6 +886,7 @@ __repmgr_first_try_connections(env)
 		    (ret = __repmgr_try_one(env, eid, FALSE)) != 0)
 			return (ret);
 	}
+DB_TEST_RECOVERY_LABEL
 	return (0);
 }
 
@@ -1245,6 +1317,7 @@ prepare_input(env, conn)
 		if ((ret = __os_malloc(env, memsize, &membase)) != 0)
 			return (ret);
 		conn->input.rep_message = membase;
+		conn->input.rep_message->size = memsize;
 		conn->input.rep_message->msg_hdr = msg_hdr;
 		conn->input.rep_message->v.repmsg.originating_eid = conn->eid;
 
@@ -1279,6 +1352,7 @@ prepare_input(env, conn)
 		if ((ret = __os_malloc(env, memsize, &membase)) != 0)
 			return (ret);
 		conn->input.rep_message = membase;
+		conn->input.rep_message->size = memsize;
 		conn->input.rep_message->msg_hdr = msg_hdr;
 		conn->input.rep_message->v.appmsg.conn = conn;
 
@@ -1294,6 +1368,7 @@ prepare_input(env, conn)
 		if ((ret = __os_malloc(env, size, &membase)) != 0)
 			return (ret);
 		conn->input.rep_message = membase;
+		conn->input.rep_message->size = size;
 		conn->input.rep_message->msg_hdr = msg_hdr;
 
 		/*
@@ -1744,9 +1819,30 @@ process_own_msg(env, conn)
 		    reject.gen, reject.version) > 0) {
 			if (db_rep->seen_repmsg && reject.status != SITE_ADDING)
 				ret = DB_DELETED;
-			else if ((ret = __repmgr_defer_op(env,
-			    REPMGR_REJOIN)) == 0)
-				ret = DB_REP_UNAVAIL;
+			else {
+				/*
+				 * If 2SITE_STRICT is off, we are likely to
+				 * win an election with our own vote before
+				 * discovering there is already a master.
+				 * Set indicator to defer the election until
+				 * after rejoining group.
+				 *
+				 * In preferred master mode, either site
+				 * should defer the election (which
+				 * executes the preferred master startup
+				 * code and only calls an election if it is
+				 * safe) and also avoid scheduling an extra
+				 * reconnect attempt in bust_connection()
+				 * by setting the indicator.
+				 */
+				if (!FLD_ISSET(db_rep->region->config,
+				    REP_C_2SITE_STRICT) ||
+				    IS_PREFMAS_MODE(env))
+					db_rep->rejoin_pending = TRUE;
+				if ((ret = __repmgr_defer_op(env,
+				    REPMGR_REJOIN)) == 0)
+					ret = DB_REP_UNAVAIL;
+			}
 		} else
 			ret = DB_REP_UNAVAIL;
 		DB_ASSERT(env, ret != 0);
@@ -1779,8 +1875,15 @@ process_own_msg(env, conn)
 	case REPMGR_GM_FORWARD:
 	case REPMGR_JOIN_REQUEST:
 	case REPMGR_JOIN_SUCCESS:
+	case REPMGR_LSNHIST_REQUEST:
+	case REPMGR_LSNHIST_RESPONSE:
+	case REPMGR_PREFMAS_FAILURE:
+	case REPMGR_PREFMAS_SUCCESS:
+	case REPMGR_READONLY_MASTER:
+	case REPMGR_READONLY_RESPONSE:
 	case REPMGR_REMOVE_REQUEST:
 	case REPMGR_RESOLVE_LIMBO:
+	case REPMGR_RESTART_CLIENT:
 	default:
 		__db_errx(env, DB_STR_A("3677",
 		    "unexpected msg type %lu in process_own_msg", "%lu"),
@@ -1914,6 +2017,7 @@ __repmgr_send_handshake(env, conn, opt, optlen, flags)
 		break;
 	case 4:
 	case 5:
+	case 6:
 		cntrl_len = __REPMGR_HANDSHAKE_SIZE;
 		break;
 	default:
@@ -1946,6 +2050,7 @@ __repmgr_send_handshake(env, conn, opt, optlen, flags)
 		break;
 	case 4:
 	case 5:
+	case 6:
 		hs.port = my_addr->port;
 		hs.alignment = MEM_ALIGN;
 		hs.ack_policy = (u_int32_t)rep->perm_policy;
@@ -2136,6 +2241,7 @@ accept_handshake(env, conn, hostname, subordinate)
 		break;
 	case 4:
 	case 5:
+	case 6:
 		if (__repmgr_handshake_unmarshal(env, &hs,
 		   conn->input.repmgr_msg.cntrl.data,
 		   conn->input.repmgr_msg.cntrl.size, NULL) != 0)
@@ -2297,6 +2403,16 @@ process_parameters(env, conn, host, port, ack, electable, flags)
 					 * don't have to do anything else here.
 					 */
 					break;
+				case SITE_IDLE:
+					/*
+					 * This can occur after the heartbeat
+					 * test hook artificially kept this
+					 * site from first trying to connect.
+					 */
+					RPRINT(env, (env, DB_VERB_REPMGR_MISC,
+				      "handshake from idle site %s:%u EID %u",
+					    host, port, eid));
+					break;
 				default:
 					DB_ASSERT(env, FALSE);
 				}
@@ -2351,7 +2467,8 @@ process_parameters(env, conn, host, port, ack, electable, flags)
 	 */
 	if (!IS_SUBORDINATE(db_rep) && /* us */
 	    !__repmgr_master_is_known(env) &&
-	    !LF_ISSET(REPMGR_SUBORDINATE)) { /* the remote site */
+	    !LF_ISSET(REPMGR_SUBORDINATE) && /* the remote site */
+	    !IS_PREFMAS_MODE(env)) {
 		RPRINT(env, (env, DB_VERB_REPMGR_MISC,
 		    "handshake with no known master to wake election thread"));
 		db_rep->new_connection = TRUE;
@@ -2464,6 +2581,7 @@ record_permlsn(env, conn)
 		 */
 		if (ackp->lsn.file > site->max_ack.file)
 			do_log_check = 1;
+		site->max_ack_gen = ackp->generation;
 		memcpy(&site->max_ack, &ackp->lsn, sizeof(DB_LSN));
 		if (do_log_check)
 			check_min_log_file(env);

@@ -1,7 +1,7 @@
 /*-
  * See the file LICENSE for redistribution information.
  *
- * Copyright (c) 2000, 2013 Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 2000, 2014 Oracle and/or its affiliates.  All rights reserved.
  *
  * $Id$
  */
@@ -138,6 +138,15 @@ public interface EventHandler {
     completed.
     */
     public void handleRepInitDoneEvent();
+
+    /**
+    A callback function to be called when an event is sent from the
+    Berkeley DB library.
+    <p>
+    This event callback is received when replication Mananger incoming queue
+    has reached its maximum threshold.
+    */
+    public void handleRepInQueueFullEvent();
 
     /**
     A callback function to be called when an event is sent from the

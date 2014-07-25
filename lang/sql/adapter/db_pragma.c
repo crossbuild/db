@@ -1,7 +1,7 @@
 /*-
  * See the file LICENSE for redistribution information.
  *
- * Copyright (c) 2010, 2013 Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 2010, 2014 Oracle and/or its affiliates.  All rights reserved.
  */
 
 /*
@@ -1108,10 +1108,7 @@ int bdbsqlPragma(Parse *pParse, char *zLeft, char *zRight, int iDb)
 			}
 		}
 
-		if (pDb->pBt->pBt->blob_threshold < 0)
-			val = 0;
-		else
-		    val = pDb->pBt->pBt->blob_threshold;
+		val = pDb->pBt->pBt->blob_threshold;
 		returnSingleInt(pParse, "large_record_opt", val);
 		parsed = 1;
 	/*

@@ -1,7 +1,7 @@
 /*-
  * See the file LICENSE for redistribution information.
  *
- * Copyright (c) 1999, 2013 Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 1999, 2014 Oracle and/or its affiliates.  All rights reserved.
  *
  * $Id$
  */
@@ -445,6 +445,8 @@ __qam_fremove(dbp, pgnoaddr)
 		    * sizeof(array->mpfarray[0]));
 		array->mpfarray[
 		    array->hi_extent - array->low_extent].mpf = NULL;
+		array->mpfarray[
+		    array->hi_extent - array->low_extent].pinref = 0;
 		if (array->low_extent != array->hi_extent)
 			array->low_extent++;
 	} else {

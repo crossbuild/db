@@ -1,7 +1,7 @@
 /*-
  * See the file LICENSE for redistribution information.
  *
- * Copyright (c) 2010, 2013 Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 2010, 2014 Oracle and/or its affiliates.  All rights reserved.
  */
 
 #include <errno.h>
@@ -396,7 +396,12 @@ typedef enum {
 	LOG_VERBOSE, LOG_DEBUG, LOG_NORMAL, LOG_RELEASE, LOG_NONE
 } loglevel_t;
 
-#define	CURRENT_LOG_LEVEL LOG_RELEASE
+/*
+ * The Makefile can override this default; e.g., -DCURRENT_LOG_LEVEL=LOG_VERBOSE
+ */
+#ifndef CURRENT_LOG_LEVEL
+#define	CURRENT_LOG_LEVEL	LOG_RELEASE
+#endif
 
 #ifdef NDEBUG
 #define	log_msg(...)

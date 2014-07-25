@@ -1,7 +1,7 @@
 /*-
  * See the file LICENSE for redistribution information.
  *
- * Copyright (c) 1999, 2013 Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 1999, 2014 Oracle and/or its affiliates.  All rights reserved.
  *
  * $Id$
  */
@@ -1033,6 +1033,11 @@ tcl_DbcGet(interp, objc, objv, dbc, ispget)
 			hkey.data = &rid;
 			hkey.ulen = hkey.size = data.size;
 			hkey.flags = DB_DBT_USERMEM;
+			if (data.data != NULL &&
+			    F_ISSET(&data, DB_DBT_MALLOC)) {
+				__os_ufree(dbc->env, data.data);
+				data.data = NULL;
+			}
 			ret = phsdbp->pget(phsdbp,
 			    dbc->txn, &hkey, &data, &tmpdata, 0);
 		} 
