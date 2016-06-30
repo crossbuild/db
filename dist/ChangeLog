@@ -1,5 +1,95 @@
 = Berkeley DB 6.1 Changelog =
 
+== Changes between 12.1.6.1.26 and 12.1.6.1.29 == 
+
+Fixed a bug where opening or renaming a compressed in-memory database
+may fail with the error "BDB1565 DB->set_bt_compress: method not
+permitted after handle's open method". [#22055][#22056]
+
+Fixed a crash when joining compressed databases. [#22058]
+
+Fixed a bug where a join cursor may miss the first matching pair when
+the database is compressed. [#22062]
+
+Fixed two potential lock leaks in database compaction. [#23725]
+
+Fixed a bug that can cause a DB_PAGE_NOTFOUND error during btree 
+compaction. [#23853]
+
+Fixed a bug where setting DatabaseEnvironmentConfig.Register had 
+no effect. [#24094]
+
+Improved the configure scripts for Mac OS X. [#24139]
+
+The JDBC jar file (sqlite.jar) is now installed in the "lib" directory 
+instead of "jar" on *nix systems. [#24139]
+
+Fixed a bug in BDB SQL where adding a replication site immediately
+after opening the master environment could cause the add site operation
+to hang.  Also fixed a bug that caused BDB SQL to lose its encryption
+settings when turning replication on or off on an existing environment.
+[#24327]
+
+Enhanced the vote comparison routine used to select a new master. [#24433]
+
+Fixed a crash which could occur when maximum count of lockers is reached. 
+[#24470]
+
+Fixed a potential memory error when executing a SQL query. [#24471]
+
+One single transaction is now used to manage blob handles for tables that 
+contain blobs. [#24549] 
+
+Fixed a bug that may cause an environment panic when the number of lock table 
+partitions is too large. [#24554]
+
+Fixed a bug where MultipleRecnoDataEntry did not encode record-number-data pairs
+correctly with append(). [#24555]
+
+Fixed a bug that may cause DBcursor->put to crash when DB_AFTER is set. [#24572]
+
+Fixed a bug where Database.setConfig() may incorrectly throw an exception. [#24585]
+	
+Fixed a bug that caused mixed-version replication live upgrades from
+releases prior to 6.0 to fail with an EEXIST error when in-memory databases
+are present.  [#24597]
+
+Corrected error paths which could cause a spurious panic when attempting
+to unlock a mutex that was not locked. [#24606]
+
+When an attempt to flush a file from the memory pool fails, add an error message
+that includes the file name. It is likely that the file was removed or altered
+outside of the control of Berkeley DB. [#24606]
+
+Removed a potential race condition when three or more threads attempt to split
+adjacent pages in a btree. [#24733]
+
+Added additional page verifications into db_verify to prevent possible
+SEGV errors when verifying extremely corrupted database files. [#24754]
+
+Fixed a bug where DB_ENV->open() would fail when DB_ENV->set_memory_max()
+was called on a 32-bit system. [#24783]
+
+Fixed a bug where an application might hang because it could not obtain 
+a TAS lock when running Linux on the SPARC architecture. [#24805]
+
+Fixed a bug that may cause a crash when working with sequences. [#24826]
+
+Fixed a crash when closing a connection to a database with sequences. 
+[#24827]
+
+BLOB files and encryption can now be enabled together.  Note that only the
+data stored in the database will be encrypted; the data in the BLOB files
+will remain unencrypted.  [#24849]
+
+Fixed a bug that may cause a segmentation fault when multiple database
+handles are opened on the same database in the same transaction. [#24857]
+
+Fixed the error "BDB0232 Error opening blob file" when using the SQL API with
+PRAGMA large_record_opt enabled. [#24895]
+
+Added a new utility program db_convert. [#25086]
+
 == Changes between 12.1.6.1.23 and 12.1.6.1.26 == 
 
 A 'salvage' (db_dump -r) no longer hangs on a corrupt database which contains
@@ -11,7 +101,7 @@ issue.  [#23739]
 Fixed DB_RUNRECOVERY errors caused by pthreads-based mutexes. [#23965]
 
 Allow the failchk process to call __env_refresh when necessary. [#24194]
-
+`
 DB->open() now detects invalid pagesizes sooner, avoiding a potential
 floating point exception when a purported database file has a pagesize of 0.
 Added a pre-verify step to the db_dump utility. [#24217]

@@ -1,7 +1,7 @@
 /*-
  * See the file LICENSE for redistribution information.
  *
- * Copyright (c) 1996, 2015 Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 1996, 2016 Oracle and/or its affiliates.  All rights reserved.
  */
 /*
  * Copyright (c) 1990, 1993, 1994, 1995, 1996
@@ -363,6 +363,14 @@ struct __cursor {
 	 * when it is next accessed.
 	 */
 #define	C_COMPRESS_MODIFIED	0x0010	/* Compressed record was modified. */
+	/*
+	 * The root page of the tree has collapsed because its next-to-last
+	 * child page was deleted. The collapse was done by copying the content
+	 * of the lone child page to the root and deleting the lone child. 
+	 * Following operations may need to be adjusted if they depend on the
+	 * existence of the deleted child page.
+	 */
+#define C_ROOT_COLLAPSED	0x0020	/* Tree root was collapsed. */
 	u_int32_t	 flags;
 };
 

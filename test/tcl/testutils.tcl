@@ -1,6 +1,6 @@
 # See the file LICENSE for redistribution information.
 #
-# Copyright (c) 1996, 2015 Oracle and/or its affiliates.  All rights reserved.
+# Copyright (c) 1996, 2016 Oracle and/or its affiliates.  All rights reserved.
 #
 # $Id$
 #
@@ -1145,14 +1145,15 @@ proc cleanup { dir env { quiet 0 } } {
 		foreach fileorig $result {
 			#
 			# We:
-			# - Ignore any env-related files, which are
-			# those that have __db.* or log.* if we are
+			# - Ignore any env-related files, which are those
+			# that match __db.*, __db_bl or log.* if we are
 			# running in an env. 
 			# - Call 'dbremove' on any databases.
 			# Remove any remaining temp files.
 			#
 			switch -glob -- $fileorig {
 			*/__db.* -
+			*/__db_bl -
 			*/log.* -
 			*/*.jdb {
 				if { $env != "NULL" } {
@@ -2837,7 +2838,7 @@ proc can_support_blobs { method args } {
 	    [is_recno $method] || [is_queue $method] } {
 		return 0
     	}
-    	foreach conf { "-encryptaes" "-encrypt" "-compress" "-dup" "-dupsort" \
+    	foreach conf { "-compress" "-dup" "-dupsort" \
 	    "-read_uncommitted" "-multiversion" } {
 		if { [string first $conf $args] != -1 } {
 		    	return 0
@@ -3419,7 +3420,7 @@ proc dumploadtest { db } {
 
 	if { $encrypt != 0 } {
 		append dbarg " -encryptany $passwd"
-		set utilflag "-P $passwd"
+		append utilflag " -P $passwd"
 	}
 
 	# Open original database to find dbtype.

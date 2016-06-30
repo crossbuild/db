@@ -134,6 +134,8 @@
 #define	__db_pgout __db_pgout@DB_VERSION_UNIQUE_NAME@
 #define	__db_decrypt_pg __db_decrypt_pg@DB_VERSION_UNIQUE_NAME@
 #define	__db_encrypt_and_checksum_pg __db_encrypt_and_checksum_pg@DB_VERSION_UNIQUE_NAME@
+#define	__db_convert_pp __db_convert_pp@DB_VERSION_UNIQUE_NAME@
+#define	__db_convert __db_convert@DB_VERSION_UNIQUE_NAME@
 #define	__db_metaswap __db_metaswap@DB_VERSION_UNIQUE_NAME@
 #define	__db_byteswap __db_byteswap@DB_VERSION_UNIQUE_NAME@
 #define	__db_pageswap __db_pageswap@DB_VERSION_UNIQUE_NAME@
@@ -312,6 +314,7 @@
 #define	__db_truncate __db_truncate@DB_VERSION_UNIQUE_NAME@
 #define	__db_upgrade_pp __db_upgrade_pp@DB_VERSION_UNIQUE_NAME@
 #define	__db_upgrade __db_upgrade@DB_VERSION_UNIQUE_NAME@
+#define	__db_page_pass __db_page_pass@DB_VERSION_UNIQUE_NAME@
 #define	__db_lastpgno __db_lastpgno@DB_VERSION_UNIQUE_NAME@
 #define	__db_31_offdup __db_31_offdup@DB_VERSION_UNIQUE_NAME@
 #define	__db_verify_pp __db_verify_pp@DB_VERSION_UNIQUE_NAME@

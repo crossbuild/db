@@ -1,7 +1,7 @@
 /*-
  * See the file LICENSE for redistribution information.
  *
- * Copyright (c) 1996, 2015 Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 1996, 2016 Oracle and/or its affiliates.  All rights reserved.
  */
 /*
  * Copyright (c) 1995, 1996
@@ -1382,6 +1382,13 @@ __txn_set_name(txn, name)
 
 	mgr = txn->mgrp;
 	env = mgr->env;
+
+	if (name == NULL || strlen(name) == 0) {
+		__db_errx(env, DB_STR("4574",
+		    "DB_TXN->set_name: name cannot be empty."));
+		return (EINVAL);
+	}
+
 	td = txn->td;
 	len = strlen(name) + 1;
 

@@ -1,7 +1,7 @@
 /*-
  * See the file LICENSE for redistribution information.
  *
- * Copyright (c) 1999, 2015 Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 1999, 2016 Oracle and/or its affiliates.  All rights reserved.
  *
  * $Id$
  */
@@ -53,6 +53,15 @@ __ham_vrfy_meta(dbp, vdp, m, pgno, flags)
 	env = dbp->env;
 	isbad = 0;
 
+	if (dbp->type != DB_HASH && dbp->type != DB_BTREE &&
+	    dbp->type != DB_RECNO) {
+		EPRINT((env, DB_STR_A("1215",
+		    "Page %lu: invalid page type %u for %s database",
+		    "%lu %u %s"), (u_long)pgno, TYPE(m),
+		    __db_dbtype_to_string(dbp->type)));
+		return DB_VERIFY_FATAL;
+	}
+
 	if ((ret = __db_vrfy_getpageinfo(vdp, pgno, &pip)) != 0)
 		return (ret);
 
@@ -86,7 +95,7 @@ __ham_vrfy_meta(dbp, vdp, m, pgno, flags)
 			 * error rather than database corruption, so we want to
 			 * avoid extraneous errors.
 			 */
-			isbad = 1;
+			ret = USR_ERR(env, DB_VERIFY_FATAL);
 			goto err;
 		}
 
@@ -100,7 +109,7 @@ __ham_vrfy_meta(dbp, vdp, m, pgno, flags)
 		 * we just return--there will be lots of extraneous
 		 * errors.
 		 */
-		isbad = 1;
+		ret = USR_ERR(env, DB_VERIFY_FATAL);
 		goto err;
 	}
 
@@ -248,6 +257,15 @@ __ham_vrfy(dbp, vdp, h, pgno, flags)
 	env = dbp->env;
 	isbad = 0;
 
+	if (dbp->type != DB_HASH && dbp->type != DB_BTREE &&
+	    dbp->type != DB_RECNO) {
+		EPRINT((env, DB_STR_A("1215",
+		    "Page %lu: invalid page type %u for %s database",
+		    "%lu %u %s"), (u_long)pgno, TYPE(h),
+		    __db_dbtype_to_string(dbp->type)));
+		return DB_VERIFY_BAD;
+	}
+
 	if ((ret = __db_vrfy_getpageinfo(vdp, pgno, &pip)) != 0)
 		return (ret);
 
@@ -281,20 +299,24 @@ __ham_vrfy(dbp, vdp, h, pgno, flags)
 			    "Page %lu: item %lu is out of order or nonsensical",
 			    "%lu %lu"), (u_long)pgno, (u_long)ent));
 			isbad = 1;
+			F_SET(pip, VRFY_ITEM_BAD);
 			goto err;
 		} else if (inpend >= himark) {
 			EPRINT((env, DB_STR_A("1103",
 			    "Page %lu: entries array collided with data",
 			    "%lu"), (u_long)pgno));
 			isbad = 1;
+			F_SET(pip, VRFY_ITEM_BAD);
 			goto err;
 
 		} else {
 			himark = inp[ent];
 			inpend += sizeof(db_indx_t);
 			if ((ret = __ham_vrfy_item(
-			    dbp, vdp, pgno, h, ent, flags)) != 0)
+			    dbp, vdp, pgno, h, ent, flags)) != 0) {
+			    	F_SET(pip, VRFY_ITEM_BAD);
 				goto err;
+			}
 		}
 
 	/* The high free byte offset should equal the offset of the last item. */
@@ -799,6 +821,7 @@ __ham_vrfy_bucket(dbp, vdp, m, bucket, flags)
 			goto err;
 		/* If it's safe to check that things hash properly, do so. */
 		if (isbad == 0 && !LF_ISSET(DB_NOORDERCHK) &&
+		    !F_ISSET(pip, VRFY_ITEM_BAD) &&
 		    (ret = __ham_vrfy_hashing(cc, pip->entries,
 		    m, bucket, pgno, flags, hfunc)) != 0) {
 			if (ret == DB_VERIFY_BAD)

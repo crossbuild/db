@@ -1100,6 +1100,12 @@ use constant IGNORE => 'ignore' ;
 	DB_REPMGR_CONF_PREFMAS_MASTER => DEFINE,
 	DB_REP_CONF_ELECT_LOGLENGTH => DEFINE,
 	DB_SET_MUTEX_FAILCHK_TIMEOUT => DEFINE,
+
+	#########
+	# 6.1.27
+	#########
+
+	DB2_AM_MPOOL_OPENED        => IGNORE,
 	) ;
 
 sub enum_Macro

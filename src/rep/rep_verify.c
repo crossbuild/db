@@ -1,7 +1,7 @@
 /*-
  * See the file LICENSE for redistribution information.
  *
- * Copyright (c) 2004, 2015 Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 2004, 2016 Oracle and/or its affiliates.  All rights reserved.
  *
  * $Id$
  */
@@ -211,11 +211,13 @@ __rep_internal_init(env, abbrev)
 	ENV *env;
 	u_int32_t abbrev;
 {
+	DB_REP *db_rep;
 	REP *rep;
 	u_int32_t ctlflags;
 	int master, ret;
 
 	ctlflags = 0;
+	db_rep = env->rep_handle;
 	rep = env->rep_handle->region;
 	REP_SYSTEM_LOCK(env);
 #ifdef HAVE_STATISTICS
@@ -237,6 +239,15 @@ __rep_internal_init(env, abbrev)
 			 "send UPDATE_REQ, merely to check for NIMDB refresh"));
 			F_SET(rep, REP_F_ABBREVIATED);
 			FLD_SET(ctlflags, REPCTL_INMEM_ONLY);
+#ifdef HAVE_REPLICATION_THREADS
+			/*
+			 * Inform repmgr that an abbreviated internal init
+			 * is in progress.  This needs to remain set until
+			 * repmgr receives the REP_INIT_DONE event so that
+			 * it can avoid marking the gmdb dirty in this case.
+			 */
+			db_rep->abbrev_init = TRUE;
+#endif
 		} else
 			F_CLR(rep, REP_F_ABBREVIATED);
 		ZERO_LSN(rep->first_lsn);

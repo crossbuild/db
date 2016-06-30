@@ -1,7 +1,7 @@
 /*-
  * See the file LICENSE for redistribution information.
  *
- * Copyright (c) 2001, 2015 Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 2001, 2016 Oracle and/or its affiliates.  All rights reserved.
  *
  * $Id$
  */
@@ -926,6 +926,7 @@ struct __db_rep {
 	int		have_gmdb;
 	int		seen_repmsg;
 	int		view_mismatch; /* View callback and gmdb don't match. */
+	int		abbrev_init;	/* For mixed version gmdb upgrade. */
 
 	/*
 	 * Flag to show what kind of transaction is currently in progress.

@@ -1,7 +1,7 @@
 /*-
  * See the file LICENSE for redistribution information.
  *
- * Copyright (c) 2001, 2015 Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 2001, 2016 Oracle and/or its affiliates.  All rights reserved.
  *
  * $Id$
  */
@@ -1939,6 +1939,12 @@ __rep_set_nsites_pp(dbenv, n)
 
 	env = dbenv->env;
 	db_rep = env->rep_handle;
+
+	if (n == 0) {
+		__db_errx(env, DB_STR("3714",
+		    "DB_ENV->rep_set_nsites: nsites cannot be 0."));
+		return (EINVAL);
+	}
 
 	ENV_NOT_CONFIGURED(
 	    env, db_rep->region, "DB_ENV->rep_set_nsites", DB_INIT_REP);

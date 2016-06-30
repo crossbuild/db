@@ -1,7 +1,7 @@
 /*-
  * See the file LICENSE for redistribution information.
  *
- * Copyright (c) 1996, 2015 Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 1996, 2016 Oracle and/or its affiliates.  All rights reserved.
  *
  * $Id$
  */
@@ -341,6 +341,10 @@ __lock_getlocker_int(lt, locker, create, ip, retp)
 			/* Create new locker and insert it into hash table. */
 			if ((sh_locker = SH_TAILQ_FIRST(
 			    &region->free_lockers, __db_locker)) == NULL) {
+				if (region->stat.st_maxlockers != 0 &&
+				    region->stat.st_maxlockers <= 
+				    region->stat.st_lockers)
+					return (__lock_nomem(env, "locker entries"));
 				nlockers = region->stat.st_lockers >> 2;
 				/* Just in case. */
 				if (nlockers == 0)

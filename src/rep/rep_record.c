@@ -1,7 +1,7 @@
 /*-
  * See the file LICENSE for redistribution information.
  *
- * Copyright (c) 2001, 2015 Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 2001, 2016 Oracle and/or its affiliates.  All rights reserved.
  *
  * $Id$
  */
@@ -702,6 +702,9 @@ __rep_process_message_int(env, control, rec, eid, ret_lsnp)
 				ret = __rep_init_cleanup(env, rep, DB_FORCE);
 				F_CLR(rep, REP_F_ABBREVIATED);
 				CLR_RECOVERY_SETTINGS(rep);
+#ifdef HAVE_REPLICATION_THREADS
+				db_rep->abbrev_init = FALSE;
+#endif
 			}
 			MUTEX_UNLOCK(env, rep->mtx_clientdb);
 			if (ret != 0) {
@@ -832,6 +835,9 @@ __rep_process_message_int(env, control, rec, eid, ret_lsnp)
 					    rep, DB_FORCE);
 					F_CLR(rep, REP_F_ABBREVIATED);
 					CLR_RECOVERY_SETTINGS(rep);
+#ifdef HAVE_REPLICATION_THREADS
+					db_rep->abbrev_init = FALSE;
+#endif
 				}
 				MUTEX_UNLOCK(env, rep->mtx_clientdb);
 				if (t_ret != 0) {

@@ -2,7 +2,7 @@
 /*
  * See the file LICENSE for redistribution information.
  *
- * Copyright (c) 1996, 2015 Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 1996, 2016 Oracle and/or its affiliates.  All rights reserved.
  *
  * $Id$
  *
@@ -61,9 +61,9 @@ extern "C" {
 #define	DB_VERSION_RELEASE	1
 #define	DB_VERSION_MAJOR	6
 #define	DB_VERSION_MINOR	1
-#define	DB_VERSION_PATCH	26
-#define	DB_VERSION_STRING	"Berkeley DB 6.1.26: (June 16, 2015)"
-#define	DB_VERSION_FULL_STRING	"Berkeley DB 12c Release 1, library version 12.1.6.1.26: (June 16, 2015)"
+#define	DB_VERSION_PATCH	29
+#define	DB_VERSION_STRING	"Berkeley DB 6.1.29: (May 13, 2016)"
+#define	DB_VERSION_FULL_STRING	"Berkeley DB 12c Release 1, library version 12.1.6.1.29: (May 13, 2016)"
 
 /*
  * !!!
@@ -1707,6 +1707,7 @@ struct __db {
 	int  (*close) __P((DB *, u_int32_t));
 	int  (*compact) __P((DB *,
 		DB_TXN *, DBT *, DBT *, DB_COMPACT *, u_int32_t, DBT *));
+	int  (*convert) __P((DB *, const char *, u_int32_t));
 	int  (*cursor) __P((DB *, DB_TXN *, DBC **, u_int32_t));
 	int  (*del) __P((DB *, DB_TXN *, DBT *, u_int32_t));
 	void (*err) __P((DB *, int, const char *, ...));
@@ -1910,7 +1911,8 @@ struct __db {
 
 #define	DB2_AM_EXCL		0x00000001 /* Exclusively lock the handle */ 
 #define	DB2_AM_INTEXCL		0x00000002 /* Internal exclusive lock. */
-#define	DB2_AM_NOWAIT		0x00000004 /* Do not wait for handle lock */ 
+#define	DB2_AM_NOWAIT		0x00000004 /* Do not wait for handle lock */
+#define	DB2_AM_MPOOL_OPENED	0x00000008 /* Memory pool setup completed */
 	u_int32_t flags2;		   /* Second flags word */
 };
 

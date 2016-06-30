@@ -802,7 +802,7 @@ TEST_MICRO_OBJS=\
 
 UTIL_PROGS=\
 	@ADDITIONAL_PROGS@ \
-	db_archive db_checkpoint db_deadlock db_dump \
+	db_archive db_checkpoint db_convert db_deadlock db_dump \
 	db_hotbackup db_load db_log_verify db_printlog db_recover \
 	db_replicate db_stat db_tuner db_upgrade db_verify
 
@@ -911,7 +911,7 @@ dbsql: shell@o@ $(DEF_LIB_SQL)
 	$(POSTLINK) $@
 
 jdbc: $(DEF_LIB)
-	@(test -d jdbc && cd jdbc && PWD='.' $(MAKE))
+	@(test -d jdbc && cd jdbc && PWD='.' env CPPFLAGS="@CPPFLAGS_JNI_INCLUDE@" JMODSUFFIX=@JMODSUFFIX@ $(MAKE))
 
 sql-test: $(DEF_LIB)
 	@(cd sql && $(MAKE) LTLINK_EXTRAS="../$(DEF_LIB) $(LIBS)" testfixture@EXEEXT@)
@@ -1009,6 +1009,11 @@ db_archive: db_archive@o@ util_sig@o@ $(DEF_LIB)
 db_checkpoint: db_checkpoint@o@ util_log@o@ util_sig@o@ $(DEF_LIB)
 	$(CCLINK) -o $@ $(LDFLAGS) \
 	    db_checkpoint@o@ util_log@o@ util_sig@o@ $(DEF_LIB) $(LIBS)
+	$(POSTLINK) $@
+
+db_convert: db_convert@o@ util_sig@o@ $(DEF_LIB)
+	$(CCLINK) -o $@ $(LDFLAGS) \
+	    db_convert@o@ util_sig@o@ $(DEF_LIB) $(LIBS)
 	$(POSTLINK) $@
 
 db_deadlock: db_deadlock@o@ util_log@o@ util_sig@o@ $(DEF_LIB)
@@ -1143,6 +1148,7 @@ install_lib:
 
 uninstall_lib:
 	@cd $(DESTDIR)$(libdir) && $(RM) $(LIB_INSTALL_FILE_LIST)
+	@(test -d jdbc && cd jdbc && make uninstall && cd -) || exit 0
 
 install_utilities:
 	@echo "Installing DB utilities: $(DESTDIR)$(bindir) ..."
@@ -2556,6 +2562,8 @@ tcl_util@o@: $(TCL_SRCDIR)/tcl_util.c
 db_archive@o@: $(utildir)/db_archive.c
 	$(CC) $(CFLAGS) $?
 db_checkpoint@o@: $(utildir)/db_checkpoint.c
+	$(CC) $(CFLAGS) $?
+db_convert@o@: $(utildir)/db_convert.c
 	$(CC) $(CFLAGS) $?
 db_deadlock@o@: $(utildir)/db_deadlock.c
 	$(CC) $(CFLAGS) $?

@@ -1,7 +1,7 @@
 /*-
  * See the file LICENSE for redistribution information.
  *
- * Copyright (c) 2009, 2015 Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 2009, 2016 Oracle and/or its affiliates.  All rights reserved.
  *
  */
 using System;
@@ -899,6 +899,7 @@ namespace BerkeleyDB {
                 ret |= FreeThreaded ? DbConstants.DB_THREAD : 0;
                 ret |= Lockdown ? DbConstants.DB_LOCKDOWN : 0;
                 ret |= Private ? DbConstants.DB_PRIVATE : 0;
+                ret |= Register ? DbConstants.DB_REGISTER : 0;
                 ret |= RunFatalRecovery ? DbConstants.DB_RECOVER_FATAL : 0;
                 ret |= RunRecovery ? DbConstants.DB_RECOVER : 0;
                 ret |= SystemMemory ? DbConstants.DB_SYSTEM_MEM : 0;

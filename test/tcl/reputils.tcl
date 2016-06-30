@@ -1,6 +1,6 @@
 # See the file LICENSE for redistribution information.
 #
-# Copyright (c) 2001, 2015 Oracle and/or its affiliates.  All rights reserved.
+# Copyright (c) 2001, 2016 Oracle and/or its affiliates.  All rights reserved.
 #
 # $Id$
 #
@@ -574,9 +574,9 @@ proc repl_verdel { test method { nclients 1 } } {
 	if { $stat == 1 } {
 		return
 	}
-	set utilflag ""
+	set utilflag "-b $masterdir/__db_bl"
 	if { $encrypt != 0 } {
-		set utilflag "-P $passwd"
+		append utilflag " -P $passwd"
 	}
 	foreach testfile $dbs {
 

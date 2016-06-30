@@ -1,7 +1,7 @@
 /*-
  * See the file LICENSE for redistribution information.
  *
- * Copyright (c) 2002, 2015 Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 2002, 2016 Oracle and/or its affiliates.  All rights reserved.
  *
  * $Id$
  */
@@ -2349,10 +2349,7 @@ database has been opened.
         }
     }
 
-    /* package */
-    void configureDatabase(final Db db, final DatabaseConfig oldConfig)
-        throws DatabaseException {
-
+    private int getFlags(final Db db) throws DatabaseException {
         int dbFlags = 0;
         dbFlags |= checksum ? DbConstants.DB_CHKSUM : 0;
         dbFlags |= btreeRecordNumbers ? DbConstants.DB_RECNUM : 0;
@@ -2365,8 +2362,17 @@ database has been opened.
         dbFlags |= transactionNotDurable ? DbConstants.DB_TXN_NOT_DURABLE : 0;
         if (!db.getPrivateDbEnv())
                 dbFlags |= (password != null) ? DbConstants.DB_ENCRYPT : 0;
+        return dbFlags;
+    }
 
-        if (dbFlags != 0)
+    /* package */
+    void configureDatabase(final Db db, final DatabaseConfig oldConfig)
+        throws DatabaseException {
+
+        int dbFlags = getFlags(db);
+        int oldFlags = oldConfig.getFlags(db);
+
+        if (dbFlags != oldFlags)
             db.set_flags(dbFlags);
 
         if (db.get_env().wrapper == null && blobDir != oldConfig.blobDir)

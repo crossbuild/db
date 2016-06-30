@@ -1,7 +1,7 @@
 /*-
  * See the file LICENSE for redistribution information.
  *
- * Copyright (c) 1999, 2015 Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 1999, 2016 Oracle and/or its affiliates.  All rights reserved.
  *
  * $Id$
  */
@@ -685,7 +685,7 @@ __db_pthread_mutex_tryreadlock(env, mutex)
 	    mutex, MUTEX_ACTION_INTEND_SHARE, &state)) != 0)
 	    	return (ret);
 	if ((ret = pthread_rwlock_tryrdlock(&mutexp->u.rwlock)) != 0) {
-		if (ret == EBUSY)
+		if (ret == EBUSY || ret == EAGAIN)
 			ret = DB_LOCK_NOTGRANTED;
 		ret = USR_ERR(env, ret);
 		if (state != NULL)

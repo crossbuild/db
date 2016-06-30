@@ -1,7 +1,7 @@
 /*-
  * See the file LICENSE for redistribution information.
  *
- * Copyright (c) 2005, 2015 Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 2005, 2016 Oracle and/or its affiliates.  All rights reserved.
  *
  * $Id$
  */
@@ -520,7 +520,16 @@ __repmgr_handle_event(env, event, info)
 		 */
 		break;
 	case DB_EVENT_REP_INIT_DONE:
-		db_rep->gmdb_dirty = TRUE;
+		/*
+		 * An abbreviated internal init doesn't change the gmdb, so
+		 * don't mark it dirty in this case.  A dirty gmdb will be
+		 * reloaded, which causes problems in some mixed-version
+		 * cases when the gmdb needs conversion.
+		 */
+		if (db_rep->abbrev_init)
+			db_rep->abbrev_init = FALSE;
+		else
+			db_rep->gmdb_dirty = TRUE;
 		break;
 	case DB_EVENT_REP_NEWMASTER:
 		DB_ASSERT(env, info != NULL);

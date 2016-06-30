@@ -1,6 +1,6 @@
 # See the file LICENSE for redistribution information.
 #
-# Copyright (c) 2013, 2015 Oracle and/or its affiliates.  All rights reserved.
+# Copyright (c) 2013, 2016 Oracle and/or its affiliates.  All rights reserved.
 #
 # $Id$
 #
@@ -23,6 +23,7 @@ proc test149 { method {tnum "149"} args } {
 	global alphabet
 	global databases_in_memory
 	global has_crypto
+	global is_envmethod
 	global tcl_platform
 
 	if { $databases_in_memory } {
@@ -61,7 +62,7 @@ proc test149 { method {tnum "149"} args } {
 	}
 
 	# Look for incompatible configurations of blob.
-	foreach conf { "-encryptaes" "-encrypt" "-compress" "-dup" "-dupsort" \
+	foreach conf { "-compress" "-dup" "-dupsort" \
 	    "-read_uncommitted" "-multiversion" } {
 		if { [lsearch -exact $args $conf] != -1 } {
 			puts "Test$tnum skipping $conf."
@@ -73,37 +74,23 @@ proc test149 { method {tnum "149"} args } {
 			puts "Test$tnum skipping -snapshot."
 			return
 		}
-		if { [is_repenv $env] == 1 } {
-			puts "Test$tnum skipping replication env."
-			return
-		}
-		if { $has_crypto == 1 } {
-			if { [$env get_encrypt_flags] != "" } {
-				puts "Test$tnum skipping encrypted env."
-				return
-			}
-		}
-	}
-	if { [lsearch -exact $args "-chksum"] != -1 } {
-		set indx [lsearch -exact $args "-chksum"]
-		set args [lreplace $args $indx $indx]
-		puts "Test$tnum ignoring -chksum for blob."
 	}
 
 	puts "Test$tnum: ($omethod $args) Database stream basic operations."
 
 	puts "\tTest$tnum.a: create the blob database."
+	set localdir $testdir
 	if { $env != "NULL" } {
-		set testdir [get_home $env]
+		set localdir [get_home $env]
 	}
-	cleanup $testdir $env
+	cleanup $localdir $env
 
 	#
 	# It doesn't matter what blob threshold value we choose, since the
 	# test will create blobs by -blob.
 	#
 	set bflags "-blob_threshold 100"
-	set blrootdir $testdir/__db_bl
+	set blrootdir $localdir/__db_bl
 	if { $env == "NULL" } {
 		append bflags " -blob_dir $blrootdir"
 	}
@@ -404,8 +391,10 @@ proc test149 { method {tnum "149"} args } {
 	# Open the database stream.
 	set ret [catch {eval {$dbc dbstream}} res]
 	error_check_bad dbstream_open $ret 0
-	error_check_good dbstream_open \
-	    [is_substr $res "cursor does not point to a blob"] 1
+	if { [is_substr $res "cursor does not point to a blob"] != 1
+	     && [is_substr $res "invalid argument"] != 1 } {
+		error_check_good dbstream_open 0 1
+	}
 
 	puts "\tTest$tnum.j1: verify database stream can not write\
 	    in blobs when it is configured to read-only."
@@ -424,7 +413,10 @@ proc test149 { method {tnum "149"} args } {
 
 	set ret [catch {eval {$dbs write -offset 0 abc}} res]
 	error_check_bad dbstream_write $ret 0
-	error_check_good dbstream_write [is_substr $res "blob is read only"] 1
+	if { [is_substr $res "blob is read only"] != 1
+	     && [is_substr $res "invalid argument"] != 1 } {
+		error_check_good dbstream_write 0 1
+	}
 
 	# Close the database stream.
 	error_check_good dbstream_close [$dbs close] 0
@@ -435,8 +427,10 @@ proc test149 { method {tnum "149"} args } {
 	error_check_good dbstream_open [is_valid_dbstream $dbs $dbc] TRUE
 	set ret [catch {eval {$dbs write -offset -1 abc}} res]
 	error_check_bad dbstream_write $ret 0
-	error_check_good dbstream_write \
-	    [is_substr $res "invalid offset value"] 1
+	if { [is_substr $res "invalid offset value"] != 1
+	     && [is_substr $res "invalid argument"] != 1 } {
+		error_check_good dbstream_write 0 1
+	}
 
 	puts "\tTest$tnum.j3: verify database stream can not write\
 	    with offset + size of data > the maximum blob size."
@@ -460,8 +454,10 @@ proc test149 { method {tnum "149"} args } {
 		    [$dbc put -keyfirst -blob $key $data] 0
 	} else {
 		error_check_bad dbstream_write $ret 0
-		error_check_good dbstream_write \
-		    [is_substr $res "exceed the maximum blob size"] 1
+		if { [is_substr $res "exceed the maximum blob size"] != 1
+		     && [is_substr $res "invalid argument"] != 1 } {
+			error_check_good dbstream_write 0 1
+		}
 	}
 
 	# Close the database stream and cursor.
@@ -503,7 +499,10 @@ proc test149 { method {tnum "149"} args } {
 
 	set ret [catch {eval {$dbs write -offset 0 abc}} res]
 	error_check_bad dbstream_write $ret 0
-	error_check_good dbstream_write [is_substr $res "blob is read only"] 1
+	if { [is_substr $res "blob is read only"] != 1
+	     && [is_substr $res "invalid argument"] != 1 } {
+		error_check_good dbstream_write 0 1
+	}
 
 	# Close the database stream and cursor.
 	error_check_good dbstream_close [$dbs close] 0

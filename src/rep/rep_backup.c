@@ -1,7 +1,7 @@
 /*-
  * See the file LICENSE for redistribution information.
  *
- * Copyright (c) 2004, 2015 Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 2004, 2016 Oracle and/or its affiliates.  All rights reserved.
  *
  * $Id$
  */
@@ -1652,6 +1652,9 @@ __rep_update_setup(env, eid, rp, rec, savetime, lsn)
 			F_SET(rep, REP_F_NIMDBS_LOADED);
 			rep->sync_state = SYNC_VERIFY;
 			F_CLR(rep, REP_F_ABBREVIATED);
+#ifdef HAVE_REPLICATION_THREADS
+			db_rep->abbrev_init = FALSE;
+#endif
 			ret = __rep_notify_threads(env, AWAIT_NIMDB);
 
 			REP_SYSTEM_UNLOCK(env);
@@ -4264,6 +4267,29 @@ __rep_nextfile(env, eid, rep)
 				rep->curfile++;
 				continue;
 			}
+		}
+
+		/* 
+		 * Skip over regular DB's in "abbreviated" internal inits.
+		 * Masters at 6.0 and later only send in-memory databases for
+		 * abbreviated internal inits, but 5.3 and earlier masters
+		 * send all database files and this code is still needed to
+		 * avoid requesting pages for on-disk database files in
+		 * those cases.
+		 */
+		if (F_ISSET(rep, REP_F_ABBREVIATED) &&
+		    !FLD_ISSET(curinfo->db_flags, DB_AM_INMEM) &&
+		    rep->infoversion <= DB_REPVERSION_53) {
+			VPRINT(env, (env, DB_VERB_REP_SYNC,
+			    "Skipping file %d in abbreviated internal init",
+			    curinfo->filenum));
+			MUTEX_LOCK(env, renv->mtx_regenv);
+			__env_alloc_free(infop,
+			    R_ADDR(infop, rep->curinfo_off));
+			MUTEX_UNLOCK(env, renv->mtx_regenv);
+			rep->curinfo_off = INVALID_ROFF;
+			rep->curfile++;
+			continue;
 		}
 
 		/* Request this file's pages. */

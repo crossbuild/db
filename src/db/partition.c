@@ -1,7 +1,7 @@
 /*-
  * See the file LICENSE for redistribution information.
  *
- * Copyright (c) 1996, 2015 Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 1996, 2016 Oracle and/or its affiliates.  All rights reserved.
  *
  * $Id$
  */
@@ -345,6 +345,14 @@ __partition_open(dbp, ip, txn, fname, type, flags, mode, do_open)
 
 	if ((ret = __partition_chk_meta(dbp, ip, txn, flags)) != 0 && do_open)
 		goto err;
+
+	if (part->nparts > PART_MAXIMUM) {
+		__db_errx(env, DB_STR_A("0789",
+	    "The number of partitions %u exceeds the maximum %u.", "%u %u"),
+		    part->nparts, (unsigned int)PART_MAXIMUM);
+		ret = USR_ERR(env, EINVAL);
+		goto err;
+	}
 
 	if ((ret = __os_calloc(env,
 	     part->nparts, sizeof(*part->handles), &part->handles)) != 0) {
@@ -1917,16 +1925,16 @@ __part_rr(dbp, ip, txn, name, subdb, newname, flags)
 		__os_free(env, np);
 
 	if (!F_ISSET(dbp, DB_AM_OPEN_CALLED)) {
-err:		/*
+err:		
+		/* We need to remove the lock event we associated with this. */
+		if (txn != NULL)
+			__txn_remlock(env, txn, NULL, tmpdbp->locker);
+
+		/*
 		 * Since we copied the locker ID from the dbp, we'd better not
 		 * free it here.
 		 */
 		tmpdbp->locker = NULL;
-
-		/* We need to remove the lock event we associated with this. */
-		if (txn != NULL)
-			__txn_remlock(env,
-			    txn, &tmpdbp->handle_lock, DB_LOCK_INVALIDID);
 
 		if ((t_ret = __db_close(tmpdbp,
 		    txn, DB_NOSYNC)) != 0 && ret == 0)

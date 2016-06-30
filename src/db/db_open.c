@@ -1,7 +1,7 @@
 /*-
  * See the file LICENSE for redistribution information.
  *
- * Copyright (c) 1996, 2015 Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 1996, 2016 Oracle and/or its affiliates.  All rights reserved.
  *
  * $Id$
  */
@@ -232,6 +232,13 @@ __db_open(dbp, ip, txn, fname, dname, type, flags, mode, meta_pgno)
 		if (ret != 0)
 			goto err;
 	}
+
+	/*
+	 * Set the open flag here. Below, the underlying access method
+	 * open functions may want to do things like acquire cursors,
+	 * so the open flag has to be set before calling them.
+	 */
+	F_SET(dbp, DB_AM_OPEN_CALLED);
 
 	/*
 	 * Internal exclusive databases need to use the shared

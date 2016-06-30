@@ -1,7 +1,7 @@
 /*-
  * See the file LICENSE for redistribution information.
  *
- * Copyright (c) 1996, 2015 Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 1996, 2016 Oracle and/or its affiliates.  All rights reserved.
  *
  * $Id$
  */
@@ -660,6 +660,7 @@ was_not_locked:
 		if (!F_ISSET(mutexp, DB_MUTEX_LOCKED))
 			goto was_not_locked;
 		F_CLR(mutexp, DB_MUTEX_LOCKED);
+		MEMBAR_EXIT();
 		MUTEX_UNSET(&mutexp->tas);
 	}
 

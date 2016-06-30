@@ -1,7 +1,7 @@
 /*-
  * See the file LICENSE for redistribution information.
  *
- * Copyright (c) 1996, 2015 Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 1996, 2016 Oracle and/or its affiliates.  All rights reserved.
  *
  * $Id$
  */
@@ -447,7 +447,7 @@ typedef struct _heapblob {
 	(HEAP_REGION_SIZE(dbp) + 1) + 1)
 /* Translate a region pgno to region number */
 #define HEAP_REGION_NUM(dbp, pgno)				\
-	((((pgno) - 1) / (HEAP_REGION_SIZE((dbp)) + 1)) + 1)
+	((((pgno) - 1) / (((u_int64_t)HEAP_REGION_SIZE((dbp))) + 1)) + 1)
 /* 
  * Given an internal heap page and page number relative to that page, return the
  * bits from map describing free space on the nth page.  Each byte in the map

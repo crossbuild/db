@@ -1,7 +1,7 @@
 /*-
  * See the file LICENSE for redistribution information.
  *
- * Copyright (c) 1996, 2015 Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 1996, 2016 Oracle and/or its affiliates.  All rights reserved.
  *
  * $Id$
  */
@@ -872,14 +872,17 @@ mpsync:	if ((ret = __db_appname(env, appname,
 			if ((t_ret =
 			    __os_closehandle(env, fhp)) != 0 && ret == 0)
 				ret = t_ret;
-		} else {
+		} else if (appname != DB_APP_BLOB) {
 			/* We may be syncing the blob meta db. */
-			if (appname != DB_APP_BLOB) {
-				__os_free(env, rpath);
-				appname = DB_APP_BLOB;
-				goto mpsync;
-			}
+			__os_free(env, rpath);
+			appname = DB_APP_BLOB;
+			goto mpsync;
 		}
+		/* This usually means that it was removed outside of BDB. */
+		if (ret != 0)
+			__db_errx(env, DB_STR_A("3047",
+			    "__memp_mf_sync: Could not sync %s: %s", "%s %s"),
+			    rpath, db_strerror(ret));
 		__os_free(env, rpath);
 	}
 

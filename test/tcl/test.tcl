@@ -1,8 +1,8 @@
 # See the file LICENSE for redistribution information.
 #
-# Copyright (c) 1996, 2015 Oracle and/or its affiliates.  All rights reserved.
+# Copyright (c) 1996, 2016 Oracle and/or its affiliates.  All rights reserved.
 #
-# $Id: test.tcl,v fa50617a1e4c 2012/08/17 09:59:58 carol $
+# $Id$
 
 source ./include.tcl
 
@@ -654,16 +654,6 @@ proc r { args } {
 				set clist [lrange $test_names(test) $tindex end]
 				set clist [concat $clist $test_names(sdb)]
 				foreach test $clist {
-					# Each skipping test can be removed from 
-					# below list if related bug is fixed.
-					# (sdb006 - [#22058])(sdb013 - [#22055])
-					# (sdb017 - [#22056])(sdb018 - [#22062])
-					if { $test == "sdb006" ||
-					     $test == "sdb013" ||
-					     $test == "sdb017" ||
-					     $test == "sdb018" } {
-						continue
-					}
 					eval run_compressed\
 					     btree $test $display $run
 				}

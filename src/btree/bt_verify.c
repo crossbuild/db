@@ -1,7 +1,7 @@
 /*-
  * See the file LICENSE for redistribution information.
  *
- * Copyright (c) 1999, 2015 Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 1999, 2016 Oracle and/or its affiliates.  All rights reserved.
  *
  * $Id$
  */
@@ -48,6 +48,14 @@ __bam_vrfy_meta(dbp, vdp, meta, pgno, flags)
 
 	env = dbp->env;
 	isbad = 0;
+
+	if (dbp->type != DB_BTREE && dbp->type != DB_RECNO) {
+		EPRINT((env, DB_STR_A("1215",
+		    "Page %lu: invalid page type %u for %s database",
+		    "%lu %u %s"), (u_long)pgno, TYPE(meta),
+		    __db_dbtype_to_string(dbp->type)));
+		return DB_VERIFY_FATAL;
+	}
 
 	if ((ret = __db_vrfy_getpageinfo(vdp, pgno, &pip)) != 0)
 		return (ret);
@@ -284,6 +292,15 @@ __ram_vrfy_leaf(dbp, vdp, h, pgno, flags)
 	env = dbp->env;
 	isbad = 0;
 
+	if (dbp->type != DB_BTREE && dbp->type != DB_RECNO &&
+	    dbp->type != DB_HASH) {
+		EPRINT((env, DB_STR_A("1215",
+		    "Page %lu: invalid page type %u for %s database",
+		    "%lu %u %s"), (u_long)pgno, TYPE(h),
+		    __db_dbtype_to_string(dbp->type)));
+		return DB_VERIFY_BAD;
+	}
+
 	if ((ret = __db_vrfy_getpageinfo(vdp, pgno, &pip)) != 0)
 		return (ret);
 
@@ -385,6 +402,15 @@ __bam_vrfy(dbp, vdp, h, pgno, flags)
 
 	env = dbp->env;
 	isbad = 0;
+
+	if (dbp->type != DB_BTREE && dbp->type != DB_RECNO &&
+	    dbp->type != DB_HASH) {
+		EPRINT((env, DB_STR_A("1215",
+		    "Page %lu: invalid page type %u for %s database",
+		    "%lu %u %s"), (u_long)pgno, TYPE(h),
+		    __db_dbtype_to_string(dbp->type)));
+		return DB_VERIFY_BAD;
+	}
 
 	if ((ret = __db_vrfy_getpageinfo(vdp, pgno, &pip)) != 0)
 		return (ret);

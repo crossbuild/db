@@ -1,7 +1,7 @@
 /*-
  * See the file LICENSE for redistribution information.
  *
- * Copyright (c) 2010, 2015 Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 2010, 2016 Oracle and/or its affiliates.  All rights reserved.
  *
  * $Id$
  */
@@ -40,6 +40,14 @@ __heap_vrfy_meta(dbp, vdp, meta, pgno, flags)
 	db_pgno_t last_pgno, max_pgno, npgs;
 	int isbad, ret, t_ret;
 	db_seq_t blob_id;
+
+	if (dbp->type != DB_HEAP) {
+		EPRINT((dbp->env, DB_STR_A("1215",
+		    "Page %lu: invalid page type %u for %s database",
+		    "%lu %u %s"), (u_long)pgno, TYPE(meta),
+		    __db_dbtype_to_string(dbp->type)));
+		return DB_VERIFY_FATAL;
+	}
 
 	if ((ret = __db_vrfy_getpageinfo(vdp, pgno, &pip)) != 0)
 		return (ret);
@@ -161,6 +169,14 @@ __heap_vrfy(dbp, vdp, h, pgno, flags)
 	db_seq_t blob_id, file_id;
 	db_indx_t *offsets, *offtbl, end;
 	u_int32_t cnt;
+
+	if (dbp->type != DB_HEAP) {
+		EPRINT((dbp->env, DB_STR_A("1215",
+		    "Page %lu: invalid page type %u for %s database",
+		    "%lu %u %s"), (u_long)pgno, TYPE(h),
+		    __db_dbtype_to_string(dbp->type)));
+		return DB_VERIFY_BAD;
+	}
 
 	if ((ret = __db_vrfy_datapage(dbp, vdp, h, pgno, flags)) != 0)
 		return (ret);

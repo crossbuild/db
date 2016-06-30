@@ -1,7 +1,7 @@
 /*-
  * See the file LICENSE for redistribution information.
  *
- * Copyright (c) 1999, 2015 Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 1999, 2016 Oracle and/or its affiliates.  All rights reserved.
  *
  * $Id$
  */
@@ -442,9 +442,12 @@ retry:	pg = NULL;
 					if (ret != 0)
 						goto err;
 				}
+				F_CLR(dbc, C_ROOT_COLLAPSED);
 				if ((ret =
 				    __bam_dpages(dbc, 0, BTD_RELINK)) != 0)
 					goto err;
+				if (F_ISSET(dbc, C_ROOT_COLLAPSED))
+					npgno = PGNO_INVALID;
 				c_data->compact_pages_free++;
 				if ((ret = __TLPUT(dbc, prev_lock)) != 0)
 					goto err;
@@ -2564,6 +2567,8 @@ new_txn:
 
 	if ((ret = __LPUT(dbc, root_lock)) != 0)
 		goto err;
+	if ((ret = __LPUT(dbc, meta_lock)) != 0)
+		goto err;
 	if ((ret = __dbc_close(dbc)) != 0)
 		goto err;
 	dbc = NULL;
@@ -2667,6 +2672,8 @@ again:	if (F_ISSET(dbp, DB_AM_SUBDB) &&
 		if ((ret = __memp_fput(dbp->mpf, ip, meta, dbp->priority)) != 0)
 			goto err;
 		meta = NULL;
+		if (txn == NULL && (ret = __LPUT(dbc, meta_lock)) != 0)
+			goto err;
 		if ((ret = __dbc_close(dbc)) != 0)
 			goto err;
 		dbc = NULL;

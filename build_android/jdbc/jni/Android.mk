@@ -1,6 +1,6 @@
 # DO NOT EDIT: automatically built by dist/s_android.
 # Makefile for building Android.JDBC for DBSQL
-# Berkeley DB 12c Release 1, library version 12.1.6.1.26: (June 16, 2015)
+# Berkeley DB 12c Release 1, library version 12.1.6.1.29: (May 13, 2016)
 #
 # This Makefile will generate 3 files:
 #   1. Static libdb_sql library. An internal library and users don't

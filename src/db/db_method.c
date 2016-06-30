@@ -1,7 +1,7 @@
 /*-
  * See the file LICENSE for redistribution information.
  *
- * Copyright (c) 1999, 2015 Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 1999, 2016 Oracle and/or its affiliates.  All rights reserved.
  *
  * $Id$
  */
@@ -251,6 +251,7 @@ __db_init(dbp, flags)
 	dbp->associate_foreign = __db_associate_foreign_pp;
 	dbp->close = __db_close_pp;
 	dbp->compact = __db_compact_pp;
+	dbp->convert = __db_convert_pp;
 	dbp->cursor = __db_cursor_pp;
 	dbp->del = __db_del_pp;
 	dbp->dump = __db_dump_pp;
@@ -588,10 +589,9 @@ __db_set_blob_threshold(dbp, bytes, flags)
 
 	DB_ILLEGAL_AFTER_OPEN(dbp, "DB->set_blob_threshold");
 
-	if (bytes != 0 && F_ISSET(dbp,
-	    (DB_AM_CHKSUM | DB_AM_ENCRYPT | DB_AM_DUP | DB_AM_DUPSORT))) {
+	if (bytes != 0 && F_ISSET(dbp, (DB_AM_DUP | DB_AM_DUPSORT))) {
 		__db_errx(dbp->env, DB_STR("0760",
-"Cannot enable blobs in databases with checksum, encryption, or duplicates."));
+"Cannot enable blobs in databases with duplicates."));
 		return (EINVAL);
 	}
 #ifdef HAVE_COMPRESSION
@@ -619,9 +619,6 @@ __db_blobs_enabled(dbp)
 {
 	/* Blob threshold must be non-0. */
 	if (!dbp->blob_threshold)
-		return (0);
-	/* Blobs cannot support encryption or checksum, but that may change. */
-	if (F_ISSET(dbp, (DB_AM_CHKSUM | DB_AM_ENCRYPT)))
 		return (0);
 	/* Blobs do not support compression, but that may change. */
 #ifdef HAVE_COMPRESSION
@@ -1097,9 +1094,9 @@ __db_set_flags(dbp, flags)
 		    env->tx_handle, "DB_NOT_DURABLE", DB_INIT_TXN);
 
 	if (dbp->blob_threshold &&
-	    LF_ISSET(DB_CHKSUM | DB_ENCRYPT | DB_DUP | DB_DUPSORT)) {
+	    LF_ISSET(DB_DUP | DB_DUPSORT)) {
 		__db_errx(dbp->env, DB_STR("0763",
-"Cannot enable checksum, encryption, or duplicates with blob support."));
+		    "Cannot enable duplicates with blob support."));
 		return (EINVAL);
 	}
 

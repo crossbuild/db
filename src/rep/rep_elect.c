@@ -1,7 +1,7 @@
 /*-
  * See the file LICENSE for redistribution information.
  *
- * Copyright (c) 2004, 2015 Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 2004, 2016 Oracle and/or its affiliates.  All rights reserved.
  *
  * $Id$
  */
@@ -1114,7 +1114,7 @@ __rep_cmp_vote(env, rep, eid, lsnp, priority, gen, data_gen, tiebreaker, flags)
 	u_int32_t priority;
 	u_int32_t data_gen, flags, gen, tiebreaker;
 {
-	int cmp, genlog_cmp, like_pri;
+	int cmp, genlog_cmp, genlog_cmp2, like_pri;
 
 	cmp = LOG_COMPARE(lsnp, &rep->w_lsn);
 	/*
@@ -1154,13 +1154,17 @@ __rep_cmp_vote(env, rep, eid, lsnp, priority, gen, data_gen, tiebreaker, flags)
 		 * for datagen.  Do not include datagen in the comparison if
 		 * this option is enabled.
 		 */
-		if (FLD_ISSET(rep->config, REP_C_ELECT_LOGLENGTH))
+		if (FLD_ISSET(rep->config, REP_C_ELECT_LOGLENGTH)) {
 			genlog_cmp = like_pri && cmp > 0;
-		else
+			genlog_cmp2 = like_pri && cmp == 0;
+		} else {
 			genlog_cmp = (like_pri && data_gen > rep->w_datagen) ||
 			    (like_pri && data_gen == rep->w_datagen && cmp > 0);
+			genlog_cmp2 = like_pri && data_gen >= rep->w_datagen &&
+			    cmp == 0;
+		}
 		if ((priority != 0 && rep->w_priority == 0) || genlog_cmp ||
-		    (cmp == 0 && (priority > rep->w_priority ||
+		    (genlog_cmp2 && (priority > rep->w_priority ||
 		    (priority == rep->w_priority &&
 		    (tiebreaker > rep->w_tiebreaker))))) {
 			RPRINT(env, (env, DB_VERB_REP_ELECT,

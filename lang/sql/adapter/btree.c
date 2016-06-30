@@ -1,7 +1,7 @@
 /*-
  * See the file LICENSE for redistribution information.
  *
- * Copyright (c) 2010, 2015 Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 2010, 2016 Oracle and/or its affiliates.  All rights reserved.
  */
 
 /*
@@ -1737,6 +1737,19 @@ int btreeReopenEnvironment(Btree *p, int removingRep)
 	if (removingRep && 
 	    (ret = pDbEnv->set_thread_count(pDbEnv, 50)) != 0)
 		goto err;
+
+	/*
+	 * Restore underlying encryption setting if any.  The original open
+	 * had encryption set in sqlite3CodecAttach(), but this path does not
+	 * make that call.
+	 */
+	if (pBt->encrypted) {
+		ret = pDbEnv->set_encrypt(pDbEnv,
+		    pBt->encrypt_pwd, DB_ENCRYPT_AES);
+		if (ret != 0)
+			goto err;
+	}
+
 	rc = btreeOpenEnvironment(p, 0);
 
 	/* Release the lock now. */
@@ -2913,10 +2926,8 @@ static int btreeHandleCacheCleanup(Btree *p, cleanup_mode_t cleanup)
 			remove = 1;
 		}
 		if (cleanup == CLEANUP_CLOSE || remove) {
-			if (remove)
-				sqlite3HashInsert(&pBt->db_cache,
-				    cached_db->key,
-				    (int)strlen(cached_db->key), NULL);
+			sqlite3HashInsert(&pBt->db_cache,
+			    cached_db->key, (int)strlen(cached_db->key), NULL);
 			if (cached_db->cookie != NULL)
 				sqlite3_free(cached_db->cookie);
 			sqlite3_free(cached_db);
@@ -6191,6 +6202,14 @@ void sqlite3BtreeCacheOverflow(BtCursor *pCur)
 	pCur->isIncrblobHandle = 1;
 	p = pCur->pBtree;
 
+        /*
+	 * This method may be applied to an existing blob handler when
+	 * sqlite3_blob_reopen() was called. We should not begin another
+	 * transaction in this case.
+	 */
+	if (p && pCur->txn != NULL && pCur->txn != pSavepointTxn)
+		return;
+
 	/*
 	 * Give the transaction to the incrblob cursor, since it has to live
 	 * the lifetime of the cursor.  Create a new transaction for any
@@ -6687,6 +6706,15 @@ int btreeGetKeyInfo(Btree *p, int iTable, KeyInfo **pKeyInfo)
 		}
 		memcpy(*pKeyInfo, newKeyInfo, nBytes);
 		(*pKeyInfo)->enc = ENC(p->db);
+
+		/*
+		 * #24471 field aSortOrder in the copied KeyInfo object is 
+		 * pointing to address inside the original KeyInfo object. Fix 
+		 * it by computing the address offset.
+		 */
+		(*pKeyInfo)->aSortOrder = (u8 *)*pKeyInfo + 
+		    ((u8 *)newKeyInfo->aSortOrder - (u8 *)newKeyInfo);
+
 		sqlite3KeyInfoUnref(newKeyInfo);
 	}
 	return SQLITE_OK;

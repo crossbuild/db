@@ -1,7 +1,7 @@
 /*-
  * See the file LICENSE for redistribution information.
  *
- * Copyright (c) 2010, 2015 Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 2010, 2016 Oracle and/or its affiliates.  All rights reserved.
  */
 
 /*
@@ -293,6 +293,7 @@ static int bdbsqlPragmaStartReplication(Parse *pParse, Db *pDb)
 {
 	Btree *pBt;
 	char *value;
+	int needs_commit = 0;
 	int rc = SQLITE_OK;
 	u8 hadRemSite = 0;
 
@@ -315,6 +316,17 @@ static int bdbsqlPragmaStartReplication(Parse *pParse, Db *pDb)
 		goto done;
 	}
 
+	/*
+	 * If a repmgr application tries to add a site immediately after
+	 * opening the BDB SQL master environment, the add site operation
+	 * can hang waiting for all other transactions to complete because
+	 * BDB SQL creates MainTxn and leaves it open.  The solution is
+	 * to commit MainTxn if the environment is opened successfully 
+	 * when replication is in use.  BDB SQL will start a new MainTxn
+	 * automatically when it is needed.  We use the needs_commit
+	 * variable to determine when this commit is needed.
+	 */
+
 	if (dbExists) {
 		if (!pBt->pBt->env_opened) {
 			if ((rc = btreeOpenEnvironment(pBt, 1)) != SQLITE_OK)
@@ -327,8 +339,10 @@ static int bdbsqlPragmaStartReplication(Parse *pParse, Db *pDb)
 		 * Opening the environment started repmgr if it was
 		 * configured for it, so we are done here.
 		 */
-		if (supportsReplication(pBt))
+		if (supportsReplication(pBt)) {
+			needs_commit = 1;
 			goto done;
+		}
 		/*
 		 * Turning on replication on an existing environment not
 		 * configured for replication requires recovery on the
@@ -356,7 +370,9 @@ static int bdbsqlPragmaStartReplication(Parse *pParse, Db *pDb)
 		 * performs a recovery.
 		 */
 		pBt->pBt->repForceRecover = 1;
-		if ((rc = btreeReopenEnvironment(pBt, 0)) != SQLITE_OK)
+		if ((rc = btreeReopenEnvironment(pBt, 0)) == SQLITE_OK)
+			needs_commit = 1;
+		else
 			sqlite3ErrorMsg(pParse, "Could not "
 			    "start replication on an existing database");
 	} else {
@@ -380,10 +396,13 @@ static int bdbsqlPragmaStartReplication(Parse *pParse, Db *pDb)
 		}
 
 		/* Create replication environment for new SQL database. */
-		rc = btreeOpenEnvironment(pBt, 1);
+		if ((rc = btreeOpenEnvironment(pBt, 1)) == SQLITE_OK)
+			needs_commit = 1;
 	}
 
 done:
+	if (needs_commit)
+		rc = sqlite3BtreeCommit(pBt);
 	return rc;
 }
 

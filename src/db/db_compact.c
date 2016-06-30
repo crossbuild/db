@@ -1,7 +1,7 @@
 /*-
  * See the file LICENSE for redistribution information.
  *
- * Copyright (c) 1999, 2015 Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 1999, 2016 Oracle and/or its affiliates.  All rights reserved.
  *
  * $Id$
  */
@@ -1070,7 +1070,7 @@ __db_move_metadata(dbc, metap, c_data, pgs_donep)
 		 */
 		if (dbp->cur_txn != NULL)
 			__txn_remlock(dbp->env,
-			    dbp->cur_txn, &dbp->handle_lock, DB_LOCK_INVALIDID);
+			    dbp->cur_txn, &dbp->handle_lock, dbp->locker);
 
 		handle_lock = dbp->handle_lock;
 		if ((ret = __fop_lock_handle(dbp->env, dbp,

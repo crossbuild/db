@@ -1,7 +1,7 @@
 /*
  * See the file LICENSE for redistribution information.
  *
- * Copyright (c) 2010, 2015 Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 2010, 2016 Oracle and/or its affiliates.  All rights reserved.
  *
  * $Id$
  */
@@ -623,6 +623,8 @@ static int btreeSeqGetHandle(sqlite3_context *context, Btree *p,
 	stale_db = sqlite3HashInsert(&pBt->db_cache, cache_entry->key,
 	    cookie->name_len, cache_entry);
 	if (stale_db) {
+		if (stale_db->cookie != NULL)
+			sqlite3_free(stale_db->cookie);
 		sqlite3_free(stale_db);
 		/*
 		 * Hash table out of memory when returned pointer is
@@ -630,8 +632,8 @@ static int btreeSeqGetHandle(sqlite3_context *context, Btree *p,
 		 */
 		if (stale_db == cache_entry) {
 			btreeSeqError(context, SQLITE_NOMEM, MSG_MALLOC_FAIL);
-			ret = SQLITE_NOMEM;
-			goto err;
+			sqlite3_mutex_leave(pBt->mutex);
+			return SQLITE_NOMEM;
 		}
 	}
 
